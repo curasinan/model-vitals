@@ -1,0 +1,5 @@
+DATE: 2026-08-12
+ATTENDEES: 3
+DECISION: Switch the export job to run hourly instead of daily.
+ACTION_OWNER: Marcus
+DUE: 2026-08-19

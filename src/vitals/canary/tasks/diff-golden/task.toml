@@ -1,0 +1,9 @@
+task_id = "diff-golden"
+checker = "diff_golden"
+max_turns = 8  # 1 of 6 live runs died on the limit; 8 matches longctx-edit, the other
+               # diff_golden task with Read/Edit.
+per_run_budget_usd = 0.30
+per_run_timeout_s = 120
+allowed_tools = ["Read", "Edit"]
+workspace_template = "workspace"
+allowed_files = ["report.py"]

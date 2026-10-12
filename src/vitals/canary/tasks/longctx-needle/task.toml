@@ -1,0 +1,19 @@
+task_id = "longctx-needle"
+checker = "exact"
+max_turns = 1
+allowed_tools = []
+long_context = true
+per_run_timeout_s = 900
+per_run_budget_usd = 1.50
+
+# --- Runtime contract for the {LOG} placeholder in prompt.md (full version in the module
+# docstring of src/vitals/canary/longctx.py) ---
+# prompt.md below contains the literal placeholder substring "{LOG}", exactly once. Before
+# sending this prompt to Claude, the canary runner MUST replace that exact substring with
+# `vitals.canary.longctx.generate_log(vitals.canary.longctx.NEEDLE_SEED)` -- called with no
+# other arguments, so target_tokens stays at its default (100_000) -- using a plain
+# `str.replace`, never `str.format`/an f-string (the prompt text is free-form and must not
+# have its other `{`/`}` characters, if any are ever added, treated as template slots).
+# golden/answer.txt was computed from `vitals.canary.longctx.planted_answers(NEEDLE_SEED)`
+# at authoring time (see tests/test_longctx.py) and will only agree with a log generated
+# from that exact seed.

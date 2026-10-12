@@ -1,0 +1,204 @@
+{
+ "incidents": [
+  {
+   "id": "n0rlp126qf8g",
+   "name": "Issues logging into Claude.ai",
+   "status": "resolved",
+   "created_at": "2026-08-24T20:11:23.934Z",
+   "updated_at": "2026-08-24T20:26:21.592Z",
+   "monitoring_at": "2026-08-24T20:11:24.058Z",
+   "resolved_at": "2026-08-24T20:26:21.577Z",
+   "impact": "minor",
+   "shortlink": "https://stspg.io/6211zbpptv0y",
+   "started_at": "2026-08-24T20:11:23.924Z",
+   "page_id": "tymt9n04zgry",
+   "incident_updates": [
+    {
+     "id": "hd18gqqcpdwq",
+     "status": "resolved",
+     "body": "This issue has been resolved.",
+     "incident_id": "n0rlp126qf8g",
+     "created_at": "2026-08-24T20:26:21.577Z",
+     "updated_at": "2026-08-24T20:26:21.577Z",
+     "display_at": "2026-08-24T20:26:21.577Z",
+     "affected_components": [
+      {
+       "code": "rwppv331jlwc",
+       "name": "claude.ai",
+       "old_status": "degraded_performance",
+       "new_status": "operational"
+      },
+      {
+       "code": "yyzkbfz2thpt",
+       "name": "Claude Code",
+       "old_status": "degraded_performance",
+       "new_status": "operational"
+      },
+      {
+       "code": "bpp5gb3hpjcl",
+       "name": "Claude Cowork",
+       "old_status": "degraded_performance",
+       "new_status": "operational"
+      }
+     ],
+     "deliver_notifications": true,
+     "custom_tweet": null,
+     "tweet_id": null
+    },
+    {
+     "id": "0s9yn3xt8jgv",
+     "status": "monitoring",
+     "body": "We have identified and resolved an issue which resulted in errors when attempting to access Claude.ai, including logging in via subscriptions for Claude Code. Errors occurred between 1:00pm (20:00 UTC) through 1:08pm PT (20:08 UTC). We are monitoring closely to ensure no further issues.",
+     "incident_id": "n0rlp126qf8g",
+     "created_at": "2026-08-24T20:11:24.058Z",
+     "updated_at": "2026-08-24T20:11:24.058Z",
+     "display_at": "2026-08-24T20:11:24.058Z",
+     "affected_components": [
+      {
+       "code": "rwppv331jlwc",
+       "name": "claude.ai",
+       "old_status": "operational",
+       "new_status": "degraded_performance"
+      },
+      {
+       "code": "yyzkbfz2thpt",
+       "name": "Claude Code",
+       "old_status": "operational",
+       "new_status": "degraded_performance"
+      },
+      {
+       "code": "bpp5gb3hpjcl",
+       "name": "Claude Cowork",
+       "old_status": "operational",
+       "new_status": "degraded_performance"
+      }
+     ],
+     "deliver_notifications": true,
+     "custom_tweet": null,
+     "tweet_id": null
+    }
+   ],
+   "components": [
+    {
+     "id": "rwppv331jlwc",
+     "name": "claude.ai",
+     "status": "operational",
+     "created_at": "2023-07-11T17:52:24.275Z",
+     "updated_at": "2026-08-24T20:26:21.517Z",
+     "position": 1,
+     "description": null,
+     "showcase": true,
+     "start_date": "2023-07-11",
+     "group_id": null,
+     "page_id": "tymt9n04zgry",
+     "group": false,
+     "only_show_if_degraded": false
+    },
+    {
+     "id": "yyzkbfz2thpt",
+     "name": "Claude Code",
+     "status": "operational",
+     "created_at": "2025-05-22T21:35:29.822Z",
+     "updated_at": "2026-08-24T20:26:21.534Z",
+     "position": 4,
+     "description": null,
+     "showcase": true,
+     "start_date": "2025-02-06",
+     "group_id": null,
+     "page_id": "tymt9n04zgry",
+     "group": false,
+     "only_show_if_degraded": false
+    },
+    {
+     "id": "bpp5gb3hpjcl",
+     "name": "Claude Cowork",
+     "status": "operational",
+     "created_at": "2026-04-01T17:39:47.692Z",
+     "updated_at": "2026-08-24T20:26:21.549Z",
+     "position": 5,
+     "description": null,
+     "showcase": true,
+     "start_date": "2026-04-01",
+     "group_id": null,
+     "page_id": "tymt9n04zgry",
+     "group": false,
+     "only_show_if_degraded": false
+    }
+   ],
+   "reminder_intervals": null
+  },
+  {
+   "id": "w43j3xmngxgj",
+   "name": "Errors logging into Claude.ai",
+   "status": "resolved",
+   "created_at": "2026-08-24T17:12:42.200Z",
+   "updated_at": "2026-08-24T17:16:02.924Z",
+   "monitoring_at": null,
+   "resolved_at": "2026-08-24T17:16:02.904Z",
+   "impact": "minor",
+   "shortlink": "https://stspg.io/kg59rclpfzsz",
+   "started_at": "2026-08-24T17:12:42.191Z",
+   "page_id": "tymt9n04zgry",
+   "incident_updates": [
+    {
+     "id": "xyhl0gd7vbmg",
+     "status": "resolved",
+     "body": "This issue has been resolved.",
+     "incident_id": "w43j3xmngxgj",
+     "created_at": "2026-08-24T17:16:02.904Z",
+     "updated_at": "2026-08-24T17:16:02.904Z",
+     "display_at": "2026-08-24T17:16:02.904Z",
+     "affected_components": [
+      {
+       "code": "rwppv331jlwc",
+       "name": "claude.ai",
+       "old_status": "degraded_performance",
+       "new_status": "operational"
+      }
+     ],
+     "deliver_notifications": true,
+     "custom_tweet": null,
+     "tweet_id": null
+    },
+    {
+     "id": "lmfk037fbt7g",
+     "status": "investigating",
+     "body": "From 9:02\u20139:08am PT / 16:02\u201316:08 UTC) users experienced issues when logging into Claude.ai, including for connecting Claude Code with subscription. At this time, this issue has been resolved, but we are continuing to investigate a potential issue impacting users of the Claude.ai desktop application.",
+     "incident_id": "w43j3xmngxgj",
+     "created_at": "2026-08-24T17:12:42.287Z",
+     "updated_at": "2026-08-24T17:12:42.287Z",
+     "display_at": "2026-08-24T17:12:42.287Z",
+     "affected_components": [
+      {
+       "code": "rwppv331jlwc",
+       "name": "claude.ai",
+       "old_status": "operational",
+       "new_status": "degraded_performance"
+      }
+     ],
+     "deliver_notifications": true,
+     "custom_tweet": null,
+     "tweet_id": null
+    }
+   ],
+   "components": [
+    {
+     "id": "rwppv331jlwc",
+     "name": "claude.ai",
+     "status": "operational",
+     "created_at": "2023-07-11T17:52:24.275Z",
+     "updated_at": "2026-08-24T20:26:21.517Z",
+     "position": 1,
+     "description": null,
+     "showcase": true,
+     "start_date": "2023-07-11",
+     "group_id": null,
+     "page_id": "tymt9n04zgry",
+     "group": false,
+     "only_show_if_degraded": false
+    }
+   ],
+   "reminder_intervals": null
+  }
+ ]
+}

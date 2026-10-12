@@ -1,0 +1,35 @@
+--- report.py
++++ report.py
+@@ -4,26 +4,26 @@
+
+
+ def render_header(project: str, build_number: int) -> str:
+-    return "Build report for %s (build #%d)" % (project, build_number)
++    return f"Build report for {project} (build #{build_number})"
+
+
+ def render_summary(passed: int, failed: int, skipped: int) -> str:
+     total = passed + failed + skipped
+-    return "%d passed, %d failed, %d skipped (of %d total)" % (passed, failed, skipped, total)
++    return f"{passed} passed, {failed} failed, {skipped} skipped (of {total} total)"
+
+
+ def render_duration(seconds: float) -> str:
+-    return "Duration: %.2f seconds" % seconds
++    return f"Duration: {seconds:.2f} seconds"
+
+
+ def render_percentage(passed: int, total: int) -> str:
+     pct = (passed / total) * 100 if total else 0.0
+-    return "Pass rate: %.1f%%" % pct
++    return f"Pass rate: {pct:.1f}%"
+
+
+ def render_footer(owner: str) -> str:
+-    return "Report generated for %s" % owner
++    return f"Report generated for {owner}"
+
+
+ def render_failure_line(name: str, line_no: int) -> str:
+-    return "  FAILED: %s at line %d" % (name, line_no)
++    return f"  FAILED: {name} at line {line_no}"

@@ -1,0 +1,103 @@
+[project]
+name = "model-vitals"
+version = "0.1.0"
+description = "Local-first monitor for Claude Code effectiveness degradation"
+readme = "README.md"
+authors = [
+    { name = "Curasinan", email = "curasinan9@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "jsonschema>=4.23",
+    "windows-toasts>=1.3; sys_platform == 'win32'",
+    "pytest>=8.3",
+]
+
+[project.scripts]
+vitals = "vitals.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "vitals"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "ruff>=0.16",
+    "mypy>=1.14",
+    "types-jsonschema>=4.23",
+    "pre-commit>=4.6.2",
+    "pyarrow>=23.0.1,<24",
+    "tzdata>=2024.1; sys_platform == 'win32'",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = [".", "scripts"]
+markers = [
+    "slow: subprocess-spawning drills, workspace checkers and the Gate 1 corpus evals",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["src/vitals/canary/tasks"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",
+    "F",
+    "I",
+    "UP",
+    "B",
+    "C4",
+    "SIM",
+    "ISC",
+    "RUF",
+    "PLW",
+    "BLE",
+    "S",
+]
+ignore = [
+    "S101",
+    "S104",
+    "S105", "S106", "S107",
+    "S110",
+    "S310",
+    "S311",
+    "S603", "S606", "S607",
+    "E501",
+
+    "PLW1510",
+    "BLE001",
+    "E741",
+    "PLW0108",
+    "ISC004",
+    "C408",
+    "B905",
+    "UP031",
+    "RUF059",
+    "RUF046",
+    "RUF005",
+    "F841",
+    "B007",
+    "SIM105",
+    "RUF001",
+    "PLW2901",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src", "corpus"]
+exclude = ['src/vitals/canary/tasks/']
+
+[[tool.mypy.overrides]]
+module = ["pyarrow.*"]
+ignore_missing_imports = true

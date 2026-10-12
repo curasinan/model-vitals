@@ -1,0 +1,1 @@
+ALTER TABLE canary_runs ADD COLUMN long_context INTEGER NOT NULL DEFAULT 0;

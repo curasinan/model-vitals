@@ -1,0 +1,12 @@
+repos:
+  - repo: local
+    hooks:
+      - id: gitleaks
+        name: gitleaks secret scan
+        description: >-
+          Scans staged changes (interactive `git commit`) or the pushed commit range (CI) for
+          secrets, using .gitleaks.toml. See scripts/gitleaks_scan.py.
+        entry: uv run python scripts/gitleaks_scan.py
+        language: system
+        pass_filenames: false
+        always_run: true

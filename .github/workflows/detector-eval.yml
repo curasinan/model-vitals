@@ -1,0 +1,77 @@
+name: detector-eval
+
+on:
+  pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+  workflow_dispatch:
+
+concurrency:
+  group: detector-eval-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  eval:
+    name: detector eval
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Sync the locked environment
+        run: uv sync --frozen
+
+      - name: Slow tests
+        run: uv run pytest -q -m slow
+
+      - name: Gate 1 detector eval (synthetic world, gating)
+        run: uv run python scripts/detector_eval.py --corpus corpus --out metrics.json
+
+      - name: Diagnostic profile (desensitised, never gating)
+        if: always()
+        run: uv run python scripts/detector_eval.py --corpus corpus --out metrics-desensitised.json --profile desensitised
+
+      - name: Upload metrics
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: detector-eval-metrics
+          path: |
+            metrics.json
+            metrics-desensitised.json
+          retention-days: 90
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### detector-eval"
+            echo ""
+            echo "job status so far: ${{ job.status }}"
+            echo ""
+            echo "#### gating (synthetic world, default profile)"
+            if [ -f metrics.json ]; then
+              uv run python scripts/detector_eval.py --summarize metrics.json
+            else
+              echo "gating run produced no metrics.json (crashed before writing -- see the job log)"
+            fi
+            echo ""
+            echo "#### diagnostic (synthetic world, desensitised profile, never gating)"
+            if [ -f metrics-desensitised.json ]; then
+              uv run python scripts/detector_eval.py --summarize metrics-desensitised.json
+            else
+              echo "diagnostic run produced no metrics-desensitised.json (crashed before writing -- see the job log)"
+            fi
+            echo ""
+            echo "Gate 2 (FP count on the committed corpus) and Gate 3 (A-E confusion matrix)"
+            echo "are not run here -- the committed corpus is measured by the slow suite's"
+            echo "real-world evals above instead of by a third CLI pass in this job. See"
+            echo "ADR-001 Phase C items 8-9 and Phase E."
+          } >> "$GITHUB_STEP_SUMMARY"

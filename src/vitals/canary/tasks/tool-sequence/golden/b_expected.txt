@@ -1,0 +1,6 @@
+name        rank  square
+alpha          1       1
+bravo          2       4
+charlie        3       9
+delta          4      16
+echo           5      25

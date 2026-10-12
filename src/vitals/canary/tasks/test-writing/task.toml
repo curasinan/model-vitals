@@ -1,0 +1,9 @@
+task_id = "test-writing"
+checker = "pytest"
+max_turns = 8  # every non-parse-error live run died at 7 under a limit of 6. 8 matches
+               # the other pytest-checker tasks (bugfix-py, rename-py).
+per_run_budget_usd = 0.35
+per_run_timeout_s = 150
+allowed_tools = ["Read", "Write", "Edit"]
+workspace_template = "workspace"
+allowed_files = ["test_slugify.py"]

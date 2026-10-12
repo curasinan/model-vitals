@@ -1,0 +1,135 @@
+title = "model-vitals gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "generic-api-key"
+
+[[rules.allowlists]]
+description = "Credential-shaped test fixtures"
+paths = [
+    '''(?:^|/)tests/test_dispatcher\.py$''',
+    '''(?:^|/)tests/test_redact\.py$''',
+    '''(?:^|/)tests/test_corpus_schema\.py$''',
+]
+
+[[rules]]
+id = "model-vitals-claude-projects-path"
+description = "Absolute home path continuing into .claude"
+regex = '''(?i)c:\\{1,2}users\\{1,2}[^\\/\s"'`]+(?:\\{1,2}|/)\.claude(?:(?:\\{1,2}|/)projects)?(?:(?:\\{1,2}|/)[^\s"'`]*)?|/((?:home|users)/[^\\/\s"'`]+[\\/]\.claude(?:[\\/]projects)?(?:[\\/][^\s"'`]*)?)'''
+tags = ["model-vitals", "path"]
+
+[[rules.allowlists]]
+description = "Elided example path and synthetic test fixtures"
+regexes = [
+    '''C:\\Users\\\.\.\.\\\.claude''',
+]
+paths = [
+    '''(?:^|/)tests/test_channels\.py$''',
+    '''(?:^|/)tests/test_gitleaks_config\.py$''',
+    '''(?:^|/)tests/test_extract_corpus\.py$''',
+]
+
+[[rules]]
+id = "model-vitals-claude-projects-envvar-path"
+description = "~ or %USERPROFILE% path into a populated .claude/projects"
+regex = '''(?i)(?:~|%USERPROFILE%)\\{1,2}\.claude\\{1,2}projects\\{1,2}[^\s"'`]+|(?:~|%USERPROFILE%)/\.claude/projects/[^\s"'`]+'''
+tags = ["model-vitals", "path"]
+
+[[rules.allowlists]]
+description = "Placeholder paths in this rule's own tests"
+paths = [
+    '''(?:^|/)tests/test_gitleaks_config\.py$''',
+]
+
+[[rules]]
+id = "model-vitals-claude-projects-slug"
+description = "Mangled-cwd project directory slug that carries a username"
+regex = '''(?i)C--users-[A-Za-z0-9_.]+(?:-[A-Za-z0-9_.]+)+|(?:^|[\s"'`(=:])-(?:home|users)-[A-Za-z0-9_.]+(?:-[A-Za-z0-9_.]+)+'''
+tags = ["model-vitals", "path"]
+
+[[rules]]
+id = "model-vitals-abs-home-path"
+description = "Absolute home directory path (Windows, POSIX, macOS)"
+regex = '''(?i)c:\\{1,2}users\\{1,2}[^\\/\s"'`]+|/((?:home|users)/[^/\s"'`]+)'''
+tags = ["model-vitals", "path"]
+
+[[rules.allowlists]]
+description = "Redactor, channel, report and corpus test fixtures"
+paths = [
+    '''(?:^|/)src/vitals/report/redact\.py$''',
+    '''(?:^|/)tests/test_redact\.py$''',
+    '''(?:^|/)tests/test_channels\.py$''',
+    '''(?:^|/)tests/test_dispatcher\.py$''',
+    '''(?:^|/)tests/test_report_builder\.py$''',
+    '''(?:^|/)tests/test_gitleaks_config\.py$''',
+    '''(?:^|/)tests/test_corpus_schema\.py$''',
+    '''(?:^|/)tests/test_extract_corpus\.py$''',
+]
+regexes = [
+    '''C:\\Users\\\.\.\.''',
+]
+
+[[rules]]
+id = "model-vitals-anthropic-api-key"
+description = "Anthropic API key"
+regex = '''sk-ant-[A-Za-z0-9_-]{8,}'''
+tags = ["model-vitals", "key"]
+
+[[rules.allowlists]]
+description = "Synthetic fixture keys in redaction tests"
+paths = [
+    '''(?:^|/)tests/test_redact\.py$''',
+    '''(?:^|/)tests/test_report_builder\.py$''',
+    '''(?:^|/)tests/test_report_cli\.py$''',
+]
+
+[[rules]]
+id = "model-vitals-telegram-bot-token"
+description = "Telegram bot token"
+regex = '''\b\d{8,10}:[A-Za-z0-9_-]{30,40}\b'''
+tags = ["model-vitals", "key"]
+
+[[rules.allowlists]]
+description = "Fake tokens in channel tests"
+paths = [
+    '''(?:^|/)tests/test_channels\.py$''',
+]
+
+[[rules]]
+id = "model-vitals-ntfy-topic-url"
+description = "Populated ntfy.sh topic URL"
+regex = '''https?://ntfy\.sh/[A-Za-z0-9_-]+'''
+tags = ["model-vitals", "webhook"]
+
+[[rules.allowlists]]
+description = "Fake topics in channel tests"
+paths = [
+    '''(?:^|/)tests/test_channels\.py$''',
+]
+
+[[rules]]
+id = "model-vitals-incoming-webhook-url"
+description = "A populated incoming-webhook URL for a known chat provider (Slack, Discord, Microsoft Teams)"
+regex = '''https://hooks\.slack\.com/services/[A-Za-z0-9/_-]+|https://(?:discord|discordapp)\.com/api/webhooks/[0-9]+/[A-Za-z0-9_-]+|https://[a-z0-9.-]+\.webhook\.office\.com/webhookb2/[A-Za-z0-9@/_-]+'''
+tags = ["model-vitals", "webhook"]
+
+[[rules]]
+id = "model-vitals-transcript-filename"
+description = "A Claude Code session-transcript filename: <uuid>.jsonl, wherever it appears"
+regex = '''\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\.jsonl\b'''
+tags = ["model-vitals", "filename"]
+
+[[rules]]
+id = "model-vitals-transcript-record-shape"
+description = "Claude Code transcript record line inside tests/ or corpus/"
+regex = '''"type"\s*:\s*"assistant".*"message"\s*:|"message"\s*:.*"type"\s*:\s*"assistant"'''
+path = '''(^|/)(tests|corpus)/'''
+tags = ["model-vitals", "transcript"]
+
+[[rules.allowlists]]
+description = "Hand-authored transcript fixture"
+paths = [
+    '''(?:^|/)tests/fixtures/transcript_sample\.jsonl$''',
+]

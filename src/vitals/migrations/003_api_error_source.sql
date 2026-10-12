@@ -1,0 +1,1 @@
+ALTER TABLE api_errors ADD COLUMN source TEXT NOT NULL DEFAULT 'otel';

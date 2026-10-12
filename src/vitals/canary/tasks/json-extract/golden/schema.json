@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "required": ["priority", "sla_breach"],
+  "properties": {
+    "priority": {"type": "string", "enum": ["low", "medium", "high", "critical"]},
+    "sla_breach": {"type": "boolean"}
+  },
+  "additionalProperties": false
+}

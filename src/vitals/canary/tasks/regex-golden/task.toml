@@ -1,0 +1,5 @@
+task_id = "regex-golden"
+checker = "exact"
+max_turns = 1
+per_run_budget_usd = 0.10
+allowed_tools = []

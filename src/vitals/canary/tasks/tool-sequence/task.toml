@@ -1,0 +1,8 @@
+task_id = "tool-sequence"
+checker = "diff_golden"
+max_turns = 6
+per_run_budget_usd = 0.20
+per_run_timeout_s = 120
+allowed_tools = ["Bash"]
+workspace_template = "workspace"
+allowed_files = ["out/b.txt"]

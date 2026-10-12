@@ -1,0 +1,8 @@
+task_id = "bugfix-py"
+checker = "pytest"
+max_turns = 8
+per_run_budget_usd = 0.50
+per_run_timeout_s = 180
+allowed_tools = ["Read", "Edit", "Bash"]
+workspace_template = "workspace"
+allowed_files = ["invoicer/totals.py"]

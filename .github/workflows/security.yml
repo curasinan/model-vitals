@@ -1,0 +1,136 @@
+name: security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  security:
+    name: security (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || '' }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Sync the locked environment
+        run: uv sync --frozen
+
+      - name: Install gitleaks
+        run: |
+          go install github.com/zricethezav/gitleaks/v8@v8.30.1
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Determine the scanned commit range
+        id: gitleaks_range
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+            head="${{ github.event.pull_request.head.sha }}"
+            echo "range=$base..$head" >> "$GITHUB_OUTPUT"
+          else
+            before="${{ github.event.before }}"
+            after="${{ github.event.after }}"
+            if [ -z "$before" ] || [ "$before" = "0000000000000000000000000000000000000000" ]; then
+              echo "range=-1" >> "$GITHUB_OUTPUT"
+            else
+              echo "range=$before..$after" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+      - name: gitleaks (via pre-commit)
+        env:
+          GITLEAKS_PUSH_RANGE: ${{ steps.gitleaks_range.outputs.range }}
+        run: uv run pre-commit run --all-files
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### security (gitleaks)"
+            echo ""
+            echo "| gate | mode | result |"
+            echo "|---|---|---|"
+            echo "| gitleaks (via pre-commit) | blocking | ${{ job.status }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  trivy:
+    name: security (trivy fs)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Trivy filesystem scan (uv.lock)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: uv.lock
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          trivy-config: trivy.yaml
+          version: v0.70.0
+          trivyignores: .trivyignore
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### security (trivy fs)"
+            echo ""
+            echo "| gate | mode | result |"
+            echo "|---|---|---|"
+            echo "| trivy fs (uv.lock, HIGH/CRITICAL) | blocking | ${{ job.status }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  sbom:
+    name: security (syft sbom)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Install syft
+        id: syft
+        uses: anchore/sbom-action/download-syft@v0.24.2
+        with:
+          syft-version: v1.51.1
+
+      - name: Generate SPDX SBOM
+        run: ${{ steps.syft.outputs.cmd }} scan dir:. -o spdx-json=sbom.spdx.json
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: sbom-spdx
+          path: sbom.spdx.json
+          retention-days: 90
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### security (syft sbom)"
+            echo ""
+            echo "| gate | mode | result |"
+            echo "|---|---|---|"
+            echo "| syft SBOM (SPDX JSON) -> artifact | informational | ${{ job.status }} |"
+          } >> "$GITHUB_STEP_SUMMARY"

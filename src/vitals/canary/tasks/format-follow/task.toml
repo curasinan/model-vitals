@@ -1,0 +1,4 @@
+task_id = "format-follow"
+checker = "exact"
+max_turns = 1
+allowed_tools = []
