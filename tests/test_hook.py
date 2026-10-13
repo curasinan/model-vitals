@@ -172,3 +172,24 @@ def test_hook_data_dir_follows_the_same_legacy_rule(tmp_path, monkeypatch):
     assert _data_dir() == str(tmp_path / ".model-vitals")
     (tmp_path / ".claude-vitals").mkdir()
     assert _data_dir() == str(tmp_path / ".claude-vitals")
+
+
+def test_utf8_payload_survives_an_ansi_console_code_page(tmp_path):
+    env = dict(os.environ, VITALS_DATA_DIR=str(tmp_path), PYTHONIOENCODING="cp1254")
+    payload = {
+        "hook_event_name": "PostToolUse",
+        "session_id": "s1",
+        "tool_name": "Bash",
+        "tool_response": {"stdout": "ŞEKER ━━ çalıştı"},
+    }
+    p = subprocess.run(
+        [sys.executable, HOOK],
+        input=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        capture_output=True,
+        env=env,
+        timeout=30,
+    )
+    assert p.returncode == 0
+    rows = spooled(tmp_path)
+    assert len(rows) == 1
+    assert "ŞEKER" in json.dumps(rows[0], ensure_ascii=False)

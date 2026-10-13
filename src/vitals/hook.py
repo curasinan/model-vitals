@@ -113,7 +113,7 @@ def append_line(path, line):
 
 def main():
     try:
-        raw = sys.stdin.read(2_000_000)
+        raw = sys.stdin.buffer.read(64_000_000)
         p = slim(json.loads(raw))
         p["_recv_ts"] = time.time()
         spool = os.path.join(_data_dir(), "spool", "hooks")
