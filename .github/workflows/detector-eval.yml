@@ -1,6 +1,11 @@
 name: detector-eval
 
 on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
   pull_request:
     paths-ignore:
       - 'docs/**'
