@@ -1,5 +1,7 @@
 import time
 
+import pytest
+
 from vitals.report.redact import redact_report, redact_text
 
 
@@ -108,8 +110,8 @@ def test_doubled_bearer_equals_form_still_redacted():
 
 
 def test_chained_assignments_stay_independent():
-    out = redact_text("token=abc;session=xyz")
-    assert out == "token=<REDACTED:assignment>;session=xyz"
+    out = redact_text("token=abc;region=xyz")
+    assert out == "token=<REDACTED:assignment>;region=xyz"
 
 
 def test_chained_assignments_comma_separated():
@@ -302,7 +304,7 @@ def test_low_entropy_base64_fixture_survives():
 
 
 def test_short_base64_value_survives_by_length_floor():
-    src = "sig=U2FsdGVkX1+abc123=="
+    src = "data=U2FsdGVkX1+abc123=="
     assert redact_text(src) == src
 
 
@@ -404,3 +406,63 @@ def test_assignment_pattern_no_catastrophic_backtracking_on_doubled_bearer():
     elapsed = time.monotonic() - start
     assert elapsed < 5.0, f"redact_text took {elapsed:.2f}s on repeated doubled-Bearer input"
     assert "abc123XYZ" not in result
+
+
+_HEX40 = "ab12" * 10
+
+
+@pytest.mark.parametrize(
+    ("text", "secret"),
+    [
+        ("DB_PASSWORD=hunter2", "hunter2"),
+        ("PGPASSWORD=s3cretpw", "s3cretpw"),
+        ('{"client_secret": "Zx9-short-ish"}', "Zx9-short-ish"),
+        ('{"refresh_token": "1//0gAbCdEf"}', "1//0gAbCdEf"),
+        ('{"accessToken": "' + _HEX40 + '"}', _HEX40),
+        ('{"dbPassword": "hunter2"}', "hunter2"),
+        ('"private_key_id": "' + _HEX40 + '"', _HEX40),
+        ("https://x.example/cb?access_token=ya29.a0AfH6SMB&x=1", "ya29.a0AfH6SMB"),
+        ("$env:VITALS_CORPUS_HMAC_KEY = '" + _HEX40 + "'", _HEX40),
+        ("Cookie: sessionid=abc123def; csrftoken=zzz999", "abc123def"),
+        ("Cookie: sessionid=abc123def; csrftoken=zzz999", "zzz999"),
+        ("https://acct.blob.example/c?sv=2024&sig=Ab%2Bcd123", "Ab%2Bcd123"),
+        ("mysql --password hunter2 -h db", "hunter2"),
+        ("Authorization: Basic dXNlcjpwYXNz", "dXNlcjpwYXNz"),
+    ],
+)
+def test_named_secrets_in_compound_names_are_redacted(text, secret):
+    assert secret not in redact_text(text)
+
+
+@pytest.mark.parametrize(
+    ("text", "user"),
+    [
+        (r'"C:\\Users\\alice.smith\\proj\\x.py"', "alice.smith"),
+        (r"D:\Users\alice\proj", "alice"),
+        (r"C:\Users\John Smith\Documents\a.txt", "Smith"),
+        (r"\\wsl$\Ubuntu\home\alice\proj", "alice"),
+        ("C%3A%5CUsers%5Calice%5Cproj", "alice"),
+        ("mail alice.smith%40example.com", "alice.smith"),
+    ],
+)
+def test_user_paths_in_escaped_and_encoded_forms_are_redacted(text, user):
+    assert user not in redact_text(text)
+
+
+def test_pgp_private_key_block_is_redacted():
+    body = "lQOYBF" + "q" * 40
+    text = f"-----BEGIN PGP PRIVATE KEY BLOCK-----\n{body}\n-----END PGP PRIVATE KEY BLOCK-----"
+    assert "PRIVATE KEY BLOCK" not in redact_text(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "output_tokens=1500 input_tokens: 20",
+        "max_tokens=4096",
+        "design=compact author=alice",
+        "session #1, turn #2",
+    ],
+)
+def test_counts_and_ordinary_words_are_left_alone(text):
+    assert redact_text(text) == text

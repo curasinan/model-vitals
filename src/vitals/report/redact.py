@@ -16,29 +16,71 @@ _SLACK_RE = re.compile(r"xox[baprs]-[A-Za-z0-9-]{10,}")
 _JWT_RE = re.compile(r"eyJ[\w-]{1,8192}+\.[\w-]{1,8192}+\.[\w-]{1,8192}+")
 
 _PEM_RE = re.compile(
-    r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]{0,16384}?-----END [A-Z ]*PRIVATE KEY-----"
+    r"-----BEGIN [A-Z ]*PRIVATE KEY(?: BLOCK)?-----[\s\S]{0,16384}?"
+    r"-----END [A-Z ]*PRIVATE KEY(?: BLOCK)?-----"
 )
 
+
+_SECRET_NAME_END = re.compile(
+    r"(?i)(?:api[_-]?key|apikey|secret|passw(?:or)?d|passwd|pwd|authorization|auth|token"
+    r"|cookie|\Asession|session[_-]?id|sessid|csrf(?:[_-]?token)?|credentials?"
+    r"|private[_-]?key(?:[_-]?id)?|sig|signature"
+    r"|(?:access|signing|encryption|master|hmac|client|ssh)[_-]?key|[_.-]key)\Z"
+)
 
 _ASSIGNMENT_RE = re.compile(
-    r"(?i)\b(api[_-]?key|token|secret|passw(?:or)?d|authorization)\b"
+    r"(?i)(?<![A-Za-z0-9_.-])([A-Za-z0-9_.-]{1,80})"
     r"(?:\\)?[\"']?"
-    r"(\s*[:=]\s*(?:Bearer\s+)?|\s+Bearer\s+)"
+    r"(\s*[:=]\s*(?:(?:Bearer|Basic|Token)\s+)?|\s+(?:Bearer|Basic)\s+)"
     r"(?:\\)?[\"']?"
-    r"(?:Bearer\s+)*+"
-    r"(?!<REDACTED:)[^\s;,\"']+"
+    r"(?:(?:Bearer|Basic)\s+)*+"
+    r"(?!<REDACTED:)([^\s;,&\"']+)"
+)
+
+_CLI_SECRET_RE = re.compile(
+    r"(?<![A-Za-z0-9-])(--?[A-Za-z0-9-]{1,40})(\s+)(?!-)(?!<REDACTED:)([^\s;,\"']+)"
+)
+_CLI_SECRET_NAME_END = re.compile(r"(?i)(?:password|passwd|pwd|token|secret|api-?key)\Z")
+
+
+def _redact_assignments(text: str) -> str:
+    out: list[str] = []
+    pos = 0
+    while True:
+        m = _ASSIGNMENT_RE.search(text, pos)
+        if m is None:
+            break
+        if _SECRET_NAME_END.search(m.group(1)):
+            out.append(text[pos : m.start()])
+            out.append(f"{m.group(1)}{m.group(2)}<REDACTED:assignment>")
+            pos = m.end()
+        else:
+            out.append(text[pos : m.start(3)])
+            pos = m.start(3)
+    out.append(text[pos:])
+    return "".join(out)
+
+
+def _cli_repl(m: re.Match[str]) -> str:
+    if _CLI_SECRET_NAME_END.search(m.group(1)):
+        return f"{m.group(1)}{m.group(2)}<REDACTED:assignment>"
+    return m.group(0)
+
+
+_EMAIL_RE = re.compile(
+    r"\b[A-Za-z0-9._+-]{1,64}+(?:@|%40)(?:[A-Za-z0-9-]{1,63}+\.)+[A-Za-z]{2,24}+\b"
 )
 
 
-def _assignment_repl(m: re.Match[str]) -> str:
-    return f"{m.group(1)}{m.group(2)}<REDACTED:assignment>"
-
-
-_EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]{1,64}+@(?:[A-Za-z0-9-]{1,63}+\.)+[A-Za-z]{2,24}+\b")
-
-
-_WIN_USERDIR_RE = re.compile(r"C:\\Users\\[^\\\s]+", re.IGNORECASE)
-_POSIX_USERDIR_RE = re.compile(r"/(?:home|Users)/[^/\s]+", re.IGNORECASE)
+_WIN_USERDIR_RE = re.compile(
+    r"\b[A-Z]:(?:\\+|/)Users(?:\\+|/)"
+    r"(?:[^\\/\s\"'`]+(?: [^\\/\s\"'`]+){0,3}(?=\\|/)|[^\\/\s\"'`]+)",
+    re.IGNORECASE,
+)
+_WIN_USERDIR_ENCODED_RE = re.compile(
+    r"\b[A-Z]%3A(?:%5C|%2F)+Users(?:%5C|%2F)+[^%\s\"'`&]+", re.IGNORECASE
+)
+_POSIX_USERDIR_RE = re.compile(r"(?:/|\\+)(?:home|Users)(?:/|\\+)[^\\/\s\"'`]+", re.IGNORECASE)
 
 
 _IPV4_RE = re.compile(
@@ -91,11 +133,13 @@ def redact_text(s: str) -> str:
     text = _JWT_RE.sub("<REDACTED:jwt>", text)
     text = _PEM_RE.sub("<REDACTED:privkey>", text)
 
-    text = _ASSIGNMENT_RE.sub(_assignment_repl, text)
+    text = _redact_assignments(text)
+    text = _CLI_SECRET_RE.sub(_cli_repl, text)
 
     text = _EMAIL_RE.sub("<REDACTED:email>", text)
 
     text = _WIN_USERDIR_RE.sub("<REDACTED:path>", text)
+    text = _WIN_USERDIR_ENCODED_RE.sub("<REDACTED:path>", text)
     text = _POSIX_USERDIR_RE.sub("<REDACTED:path>", text)
 
     text = _IPV4_RE.sub(_ipv4_repl, text)
