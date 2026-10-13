@@ -14,13 +14,13 @@ __all__ = ["NO_DATA_DEDUP_KEY", "check_no_data", "newest_activity_epoch", "newes
 
 NO_DATA_DEDUP_KEY = "no_data::collection"
 
-LIVE_KINDS = ("hook_spool", "otel_spool", "transcripts")
+LIVE_KINDS = ("hook_spool", "otel_spool")
 
 
 def newest_ingest_ts(conn: sqlite3.Connection) -> str | None:
     try:
         row = conn.execute(
-            "SELECT MAX(ts) FROM ingest_log WHERE kind IN (?,?,?)", LIVE_KINDS
+            "SELECT MAX(ts) FROM ingest_log WHERE kind IN (?,?)", LIVE_KINDS
         ).fetchone()
     except sqlite3.Error:  # pragma: no cover
         return None

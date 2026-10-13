@@ -172,3 +172,16 @@ def test_swallowed_failures_are_reported_alongside_the_silence(tmp_path):
     _, attribution = deadman.check_no_data(conn, cfg, utcnow_iso())
 
     assert attribution.evidence["failopen_totals"]["hook.spool"] == 2
+
+
+def test_the_daemons_own_transcript_scan_does_not_mask_dead_hooks(tmp_path):
+    cfg = _cfg(tmp_path)
+    conn = _conn(tmp_path)
+    log_ingest(conn, "hook_spool", 1, 0)
+    log_ingest(conn, "otel_spool", 1, 0)
+    conn.execute("UPDATE ingest_log SET ts = ?", (_ago(90),))
+    conn.commit()
+    log_ingest(conn, "transcripts", 3, 0)
+    _touch_transcript(cfg, minutes_ago=1)
+
+    assert deadman.check_no_data(conn, cfg, utcnow_iso()) is not None
