@@ -19,6 +19,7 @@ from vitals.alert.channels import (
     mask_telegram_url,
 )
 from vitals.alert.dispatcher import _summary_text
+from vitals.alert.protocol import ToastLinks
 from vitals.alert.rules import AlertDraft
 from vitals.detect.attribution import Attribution
 
@@ -552,61 +553,73 @@ def test_redaction_does_not_mangle_ordinary_diagnostic_text(monkeypatch):
     assert "api.telegram.org/bot***/" in message
 
 
-def test_desktop_toast_offers_label_buttons_for_a_labelable_alert():
+def _links(alert_id):
+    return ToastLinks(
+        f"open:{alert_id}",
+        [("Real", f"real:{alert_id}"), ("False alarm", f"fa:{alert_id}")],
+    )
+
+
+def test_desktop_toast_carries_links_for_a_labelable_alert():
     calls = []
-    clicked = []
     channel = DesktopToast(
-        notify=lambda title, body, buttons, on_activated: calls.append((buttons, on_activated)),
-        on_label=clicked.append,
+        notify=lambda title, body, links: calls.append(links),
+        links=_links,
     )
     channel.send(_payload(alert_id=7, labelable=True))
 
-    buttons, on_activated = calls[0]
-    assert buttons == [
-        ("Real", "alert=7&label=real"),
-        ("False alarm", "alert=7&label=false_alarm"),
-        ("Not sure", "alert=7&label=unsure"),
-    ]
-    on_activated("")
-    on_activated("alert=7&label=false_alarm")
-    assert clicked == ["alert=7&label=false_alarm"]
+    assert calls == [_links(7)]
 
 
-def test_desktop_toast_has_no_buttons_without_an_alert_id_or_a_label_handler():
+def test_desktop_toast_has_no_links_without_an_alert_id_or_a_registered_handler():
     calls = []
-    plain = DesktopToast(notify=lambda title, body: calls.append(title), on_label=print)
+    plain = DesktopToast(notify=lambda title, body: calls.append(title), links=_links)
     plain.send(_payload(alert_id=None, labelable=True))
     no_handler = DesktopToast(notify=lambda title, body: calls.append(title))
     no_handler.send(_payload(alert_id=3, labelable=True))
-    not_labelable = DesktopToast(notify=lambda title, body: calls.append(title), on_label=print)
+    not_labelable = DesktopToast(notify=lambda title, body: calls.append(title), links=_links)
     not_labelable.send(_payload(alert_id=3, labelable=False))
     assert len(calls) == 3
 
 
-def test_a_failing_label_handler_never_escapes_the_toast_callback():
+def test_a_failing_link_builder_still_shows_a_plain_toast():
     calls = []
 
-    def boom(arguments):
-        raise RuntimeError("db gone")
+    def boom(alert_id):
+        raise OSError("key file unreadable")
 
-    channel = DesktopToast(
-        notify=lambda title, body, buttons, on_activated: calls.append(on_activated),
-        on_label=boom,
-    )
+    channel = DesktopToast(notify=lambda title, body: calls.append(title), links=boom)
     channel.send(_payload(alert_id=1, labelable=True))
-    calls[0]("alert=1&label=real")
+    assert len(calls) == 1
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="windows-toasts is only installed on Windows")
-def test_the_real_toast_carries_three_label_buttons():
-    from vitals.alert.channels import _build_label_toast
+def test_the_real_toast_launches_signed_links_through_the_protocol():
+    from vitals.alert.channels import _build_toast
 
-    toaster, toast = _build_label_toast(
-        "title",
-        "body",
-        [("Real", "alert=1&label=real"), ("Not sure", "alert=1&label=unsure")],
-        lambda arguments: None,
+    links = ToastLinks(
+        "model-vitals://open?alert=1&sig=ab",
+        [
+            ("Real", "model-vitals://label?alert=1&label=real&sig=cd"),
+            ("Not sure", "model-vitals://label?alert=1&label=unsure&sig=ef"),
+        ],
     )
-    assert [a.arguments for a in toast.actions] == ["alert=1&label=real", "alert=1&label=unsure"]
-    assert toast.on_activated is not None
+    toaster, toast = _build_toast("title", "body", links)
+
+    assert toast.launch_action == links.open
+    assert [a.launch for a in toast.actions] == [uri for _, uri in links.buttons]
     assert type(toaster).__name__ == "InteractableWindowsToaster"
+    xml = toaster._setup_toast(toast, False).xmlDocument.get_xml()
+    assert xml.count('activationType="protocol"') == 3
+    assert "label=real&amp;sig=cd" in xml
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="windows-toasts is only installed on Windows")
+def test_the_real_plain_toast_has_no_actions():
+    from vitals.alert.channels import _build_toast
+
+    toaster, toast = _build_toast("title", "body", None)
+
+    assert toast.actions == []
+    assert toast.launch_action is None
+    assert type(toaster).__name__ == "WindowsToaster"

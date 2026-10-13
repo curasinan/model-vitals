@@ -2,24 +2,17 @@ from __future__ import annotations
 
 import sqlite3
 from typing import TYPE_CHECKING
-from urllib.parse import parse_qs, urlencode
 
-from vitals import failopen
-from vitals.db import get_conn
 from vitals.timeutil import utcnow_iso
 
 if TYPE_CHECKING:
-    from vitals.config import Config, DetectCfg
+    from vitals.config import DetectCfg
 
 __all__ = [
     "BUTTONS",
     "LABELS",
     "apply_label",
-    "encode_action",
-    "failopen_totals",
     "false_alarm_rate",
-    "handle_toast_action",
-    "parse_action",
     "record_label",
     "summarize",
 ]
@@ -27,22 +20,6 @@ __all__ = [
 LABELS = ("real", "false_alarm", "unsure")
 BUTTONS = (("Real", "real"), ("False alarm", "false_alarm"), ("Not sure", "unsure"))
 _RESOLUTION = {"real": "confirmed", "false_alarm": "false_positive"}
-_FAILOPEN_SITE = "toast.label"
-
-
-def encode_action(alert_id: int, label: str) -> str:
-    return urlencode({"alert": alert_id, "label": label})
-
-
-def parse_action(arguments: str | None) -> tuple[int, str] | None:
-    if not arguments:
-        return None
-    fields = parse_qs(arguments)
-    alert = fields.get("alert", [""])[0]
-    label = fields.get("label", [""])[0]
-    if not alert.isdigit() or label not in LABELS:
-        return None
-    return int(alert), label
 
 
 def record_label(
@@ -79,24 +56,6 @@ def apply_label(
     if label in _RESOLUTION:
         resolve(conn, alert_id, _RESOLUTION[label], cfg=detect_cfg, now_iso=now_iso)
     record_label(conn, alert_id, label, source, now_iso=now_iso)
-
-
-def handle_toast_action(cfg: Config, arguments: str | None) -> None:
-    try:
-        parsed = parse_action(arguments)
-        if parsed is None:
-            raise ValueError("not a label action")
-        conn = get_conn(cfg.db_path)
-        try:
-            apply_label(conn, parsed[0], parsed[1], "toast", cfg.detect)
-        finally:
-            conn.close()
-    except Exception:
-        failopen.record(_FAILOPEN_SITE, cfg.data_dir)
-
-
-def failopen_totals(cfg: Config) -> dict[str, int]:
-    return failopen.totals(cfg.data_dir)
 
 
 def summarize(conn: sqlite3.Connection, since_iso: str) -> dict[str, dict[str, int]]:

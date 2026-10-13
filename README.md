@@ -69,6 +69,7 @@ To remove everything:
 
 ```powershell
 Unregister-ScheduledTask -TaskName model-vitals -Confirm:$false
+Remove-Item -Recurse HKCU:\Software\Classes\model-vitals
 ```
 
 then restore `~/.claude/settings.json` from the newest `settings.json.vitals-bak-*` beside it,
@@ -83,6 +84,20 @@ and **Not sure**. A click is stored in the `alert_labels` table:
 - **False alarm** resolves it as a false positive, so its hours fold back into healthy history.
 - **Not sure** only records the label.
 
+Clicking the toast body opens the alert's local detail file.
+
+The buttons are `model-vitals://` links. `vitals install-service` registers that scheme for the
+current user (`HKCU\Software\Classes\model-vitals`), pointing at
+`pythonw -m vitals handle-uri`, then launches a test link through the shell and reports whether
+the handler answered. Because Windows starts the handler itself, a click is recorded even when
+the toast is clicked from the Notification Center after the daemon has restarted. Until the
+scheme is registered, toasts are shown without buttons.
+
+Any web page can ask the browser to open a registered scheme, so every link carries an HMAC
+signature made with a per-install key (`~/.model-vitals/uri.key`). The handler rejects
+unsigned or altered links, reads nothing from a link but an alert id, a label and a test
+nonce, and counts every rejected link under the `toast.uri` fail-open site.
+
 The same labels from a terminal:
 
 ```bash
@@ -92,10 +107,8 @@ vitals label <alert_id> real|false-alarm|unsure
 `vitals resolve` records a label too. `vitals status` shows the last 30 days per severity with
 the false-alarm rate, which is the number to watch before trusting or forwarding alerts.
 
-Two limits. A button click reaches the daemon only while the process that showed the toast is
-still running; a toast clicked from the Notification Center after a daemon restart is not
-recorded, so use `vitals label` for those. And because button callbacks need a registered app
-identity, the toast appears under Command Prompt with `model-vitals` as its attribution line.
+Because toast buttons need a registered app identity, the toast appears under Command Prompt
+with `model-vitals` as its attribution line.
 
 ## Development
 

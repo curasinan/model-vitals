@@ -225,6 +225,12 @@ def _cmd_label(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_handle_uri(args: argparse.Namespace) -> int:
+    from vitals.alert.protocol import handle_uri
+
+    return handle_uri(_cfg(args), args.uri)
+
+
 def _cmd_alert_test(args: argparse.Namespace) -> int:
     import uuid
 
@@ -460,6 +466,8 @@ def _find_uv() -> str | None:
 
 
 def _cmd_install_service(args: argparse.Namespace) -> int:
+    from vitals.alert.protocol import handler_command, register, scheme, smoke_check
+
     cfg = _cfg(args)
     repo = Path(__file__).resolve().parents[2]
     venv = cfg.data_dir / "venv"
@@ -479,6 +487,7 @@ def _cmd_install_service(args: argparse.Namespace) -> int:
     pythonw = venv / "Scripts" / "pythonw.exe"
     if args.dry_run:
         print(f"--dry-run: would register a logon task running {pythonw} -m vitals serve")
+        print(f"--dry-run: would register {scheme()}:// -> {handler_command(pythonw)}")
         return 0
     result = subprocess.run(
         [
@@ -493,7 +502,19 @@ def _cmd_install_service(args: argparse.Namespace) -> int:
         ],
         text=True,
     )
-    return result.returncode
+    if result.returncode != 0:
+        return result.returncode
+
+    register(pythonw)
+    print(f"registered {scheme()}:// -> {handler_command(pythonw)}")
+    if smoke_check(cfg):
+        print("toast buttons: the link handler answered")
+        return 0
+    print(
+        "toast buttons: the link handler did not answer within 15 s, so clicks on toast"
+        " buttons will not be recorded; use `vitals label` instead"
+    )
+    return 1
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -607,6 +628,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_label.add_argument("alert_id", type=int, help="alerts.id")
     p_label.add_argument("label", choices=["real", "false-alarm", "unsure"])
     p_label.set_defaults(func=_cmd_label)
+
+    p_uri = sub.add_parser(
+        "handle-uri", help="handle a model-vitals:// link (what the toast buttons launch)"
+    )
+    p_uri.add_argument("uri")
+    p_uri.set_defaults(func=_cmd_handle_uri)
 
     p_alert_test = sub.add_parser(
         "alert-test",

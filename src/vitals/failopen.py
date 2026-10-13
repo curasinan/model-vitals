@@ -12,7 +12,7 @@ SITES: tuple[str, ...] = (
     "db.log_ingest",
     "hook.spool",
     "otlp.record",
-    "toast.label",
+    "toast.uri",
 )
 
 _DIRNAME = "failopen"

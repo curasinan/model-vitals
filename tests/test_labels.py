@@ -1,5 +1,4 @@
 import json
-import threading
 
 import pytest
 
@@ -50,18 +49,6 @@ def _labels(conn, alert_id):
     ]
 
 
-def test_action_arguments_round_trip():
-    for label in labels.LABELS:
-        assert labels.parse_action(labels.encode_action(42, label)) == (42, label)
-
-
-@pytest.mark.parametrize(
-    "raw", ["", "garbage", "alert=x&label=real", "alert=3&label=maybe", "label=real", None]
-)
-def test_parse_rejects_anything_that_is_not_a_label_action(raw):
-    assert labels.parse_action(raw) is None
-
-
 def test_real_confirms_the_alert_and_records_the_label(cfg, conn):
     alert_id, anomaly_id = _alert(conn)
 
@@ -103,26 +90,6 @@ def test_an_unknown_alert_is_not_labelled(cfg, conn):
     with pytest.raises(LookupError):
         labels.apply_label(conn, 999, "real", "cli", cfg.detect, now_iso=START)
     assert conn.execute("SELECT COUNT(*) FROM alert_labels").fetchone()[0] == 0
-
-
-def test_a_toast_click_is_handled_on_its_own_thread_and_connection(cfg, conn):
-    alert_id, _ = _alert(conn)
-
-    worker = threading.Thread(
-        target=labels.handle_toast_action, args=(cfg, labels.encode_action(alert_id, "unsure"))
-    )
-    worker.start()
-    worker.join(timeout=30)
-
-    assert _labels(conn, alert_id) == [("unsure", "toast")]
-
-
-def test_a_bad_toast_click_never_raises_and_leaves_a_mark(cfg, conn):
-    labels.handle_toast_action(cfg, "garbage")
-    labels.handle_toast_action(cfg, labels.encode_action(999, "real"))
-
-    counts = labels.failopen_totals(cfg)
-    assert counts.get("toast.label", 0) == 2
 
 
 def test_summary_uses_the_latest_label_per_alert(cfg, conn):

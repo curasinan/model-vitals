@@ -614,10 +614,17 @@ def test_dispatch_marks_detector_alerts_as_labelable(tmp_path, monkeypatch):
     assert (second.alert_id, second.labelable) == (collection, False)
 
 
-def test_the_desktop_channel_is_wired_to_record_labels(tmp_path, monkeypatch):
+def test_the_desktop_channel_gets_links_only_when_the_handler_is_registered(tmp_path, monkeypatch):
+    from vitals.alert import protocol
+
     cfg = _cfg(tmp_path, monkeypatch)
     cfg.channels = {"desktop": {"enabled": True}}
 
-    (desktop,) = channels_mod.load_channels(cfg)
+    monkeypatch.setattr(protocol, "is_registered", lambda: False)
+    (unregistered,) = channels_mod.load_channels(cfg)
+    monkeypatch.setattr(protocol, "is_registered", lambda: True)
+    (registered,) = channels_mod.load_channels(cfg)
 
-    assert desktop._on_label is not None
+    assert unregistered._links is None
+    links = registered._links(9)
+    assert protocol.parse_uri(links.open, protocol._key(cfg.data_dir, create=False)).alert_id == 9
