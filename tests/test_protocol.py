@@ -172,7 +172,7 @@ def test_the_smoke_check_fails_when_nothing_answers(cfg):
 
 
 def test_the_registered_command_quotes_the_interpreter_and_the_link():
-    pythonw = Path("C:/Users/a b/.model-vitals/venv/Scripts/pythonw.exe")
+    pythonw = Path("D:/py tools/venv/Scripts/pythonw.exe")
     assert protocol.handler_command(pythonw) == f'"{pythonw}" -m vitals handle-uri -- "%1"'
 
 
