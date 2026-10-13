@@ -74,6 +74,29 @@ Unregister-ScheduledTask -TaskName model-vitals -Confirm:$false
 then restore `~/.claude/settings.json` from the newest `settings.json.vitals-bak-*` beside it,
 and delete `~/.model-vitals`.
 
+## Labelling alerts
+
+Every detector alert shown as a desktop toast carries three buttons: **Real**, **False alarm**
+and **Not sure**. A click is stored in the `alert_labels` table:
+
+- **Real** resolves the alert as confirmed, so its hours stay out of the baseline.
+- **False alarm** resolves it as a false positive, so its hours fold back into healthy history.
+- **Not sure** only records the label.
+
+The same labels from a terminal:
+
+```bash
+vitals label <alert_id> real|false-alarm|unsure
+```
+
+`vitals resolve` records a label too. `vitals status` shows the last 30 days per severity with
+the false-alarm rate, which is the number to watch before trusting or forwarding alerts.
+
+Two limits. A button click reaches the daemon only while the process that showed the toast is
+still running; a toast clicked from the Notification Center after a daemon restart is not
+recorded, so use `vitals label` for those. And because button callbacks need a registered app
+identity, the toast appears under Command Prompt with `model-vitals` as its attribution line.
+
 ## Development
 
 ```bash

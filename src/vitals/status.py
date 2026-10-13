@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 
+from vitals.alert.labels import false_alarm_rate, summarize
 from vitals.db import kv_get
 from vitals.timeutil import days_ago_iso, local_day, parse_iso, utcnow_iso
 
@@ -279,6 +280,21 @@ def render_status(conn: sqlite3.Connection, hours: int = 24) -> str:
             for a in alerts
         ],
     )
+
+    lines += ["", "labels (30d):"]
+    summary = summarize(conn, days_ago_iso(30))
+    if not summary:
+        lines.append("  (none yet: use the toast buttons or `vitals label <id> ...`)")
+    for severity in ("CRITICAL", "WARN", "INFO"):
+        counts = summary.get(severity)
+        if not counts:
+            continue
+        rate = false_alarm_rate(counts)
+        rate_text = "n/a" if rate is None else f"{rate:.0%}"
+        lines.append(
+            f"  {severity}: {counts['real']} real / {counts['false_alarm']} false alarm"
+            f" / {counts['unsure']} unsure  (false-alarm rate {rate_text})"
+        )
 
     lines += ["", _rule("canaries + spend")]
     cycle = conn.execute("SELECT * FROM canary_cycles ORDER BY started_at DESC LIMIT 1").fetchone()

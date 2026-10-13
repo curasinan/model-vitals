@@ -5,9 +5,10 @@ import os
 import re
 import urllib.error
 import urllib.request
+from collections import deque
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 from urllib.parse import urlsplit
 
 from vitals.report.redact import redact_text
@@ -35,6 +36,8 @@ class AlertPayload:
     title: str
     summary_text: str
     local_detail_path: str | None = None
+    alert_id: int | None = None
+    labelable: bool = False
 
 
 class Channel(Protocol):
@@ -108,27 +111,79 @@ def _compose_text(payload: AlertPayload) -> str:
     return f"[{payload.severity}] {payload.title}\n{payload.summary_text}"
 
 
-def _default_toast_notify(title: str, body: str) -> None:
-    from windows_toasts import Toast, WindowsToaster
+_LIVE_TOASTS: deque[tuple[Any, Any]] = deque(maxlen=64)
 
-    toaster = WindowsToaster("model-vitals")
+
+def _build_label_toast(
+    title: str,
+    body: str,
+    buttons: list[tuple[str, str]],
+    on_activated: Callable[[str], None],
+) -> tuple[Any, Any]:
+    from windows_toasts import InteractableWindowsToaster, Toast, ToastButton
+
+    toaster = InteractableWindowsToaster("model-vitals")
     toast = Toast()
     toast.text_fields = [title, body]
-    toaster.show_toast(toast)
+    for caption, arguments in buttons:
+        toast.AddAction(ToastButton(caption, arguments))
+    toast.on_activated = lambda event: on_activated(event.arguments or "")
+    return toaster, toast
+
+
+def _default_toast_notify(
+    title: str,
+    body: str,
+    buttons: list[tuple[str, str]] | None = None,
+    on_activated: Callable[[str], None] | None = None,
+) -> None:
+    if buttons and on_activated is not None:
+        toaster, toast = _build_label_toast(title, body, buttons, on_activated)
+        _LIVE_TOASTS.append((toaster, toast))
+        toaster.show_toast(toast)
+        return
+
+    from windows_toasts import Toast, WindowsToaster
+
+    plain_toaster = WindowsToaster("model-vitals")
+    plain = Toast()
+    plain.text_fields = [title, body]
+    plain_toaster.show_toast(plain)
 
 
 class DesktopToast:
     name = "desktop"
 
-    def __init__(self, notify: Callable[[str, str], None] | None = None) -> None:
+    def __init__(
+        self,
+        notify: Callable[..., None] | None = None,
+        on_label: Callable[[str], None] | None = None,
+    ) -> None:
         self._notify = notify or _default_toast_notify
+        self._on_label = on_label
+
+    def _activated(self, arguments: str) -> None:
+        if self._on_label is None or not arguments:
+            return
+        try:
+            self._on_label(arguments)
+        except Exception:
+            return
 
     def send(self, payload: AlertPayload) -> None:
+        from vitals.alert.labels import BUTTONS, encode_action
+
         body = payload.summary_text
         if payload.local_detail_path:
             body = f"{body}\ndetail: {payload.local_detail_path}"
         try:
-            self._notify(payload.title, body)
+            if payload.labelable and payload.alert_id is not None and self._on_label is not None:
+                buttons = [
+                    (caption, encode_action(payload.alert_id, label)) for caption, label in BUTTONS
+                ]
+                self._notify(payload.title, body, buttons, self._activated)
+            else:
+                self._notify(payload.title, body)
         except Exception as exc:  # pragma: no cover
             raise ChannelError(_safe_message(f"{self.name}: {exc}")) from None
 
@@ -236,7 +291,11 @@ def load_channels(cfg) -> list[Channel]:
 
     desktop_cfg = channels_cfg.get("desktop") or {}
     if desktop_cfg.get("enabled"):
-        channels.append(DesktopToast())
+        from vitals.alert.labels import handle_toast_action
+
+        channels.append(
+            DesktopToast(on_label=lambda arguments: handle_toast_action(cfg, arguments))
+        )
 
     telegram_cfg = channels_cfg.get("telegram") or {}
     if telegram_cfg.get("enabled"):

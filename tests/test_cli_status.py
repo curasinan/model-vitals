@@ -423,3 +423,68 @@ def test_status_hook_line_flags_a_long_silence(tmp_path, monkeypatch):
     line = next(l for l in render_status(conn, 24).splitlines() if l.startswith("hook collection:"))
     assert "216.0h ago" in line
     assert "silent" in line.lower()
+
+
+def _seed_alert(cfg):
+    conn = get_conn(cfg.db_path)
+    init_db(conn)
+    cur = conn.execute(
+        "INSERT INTO anomalies(signal, model, context_bucket, cc_version, started_at, direction,"
+        " status) VALUES ('api_latency_p95', 'm', 'gt180k', '2.1.1', ?, 'up', 'open')",
+        (utcnow_iso(),),
+    )
+    alert = conn.execute(
+        "INSERT INTO alerts(ts, severity, attribution, title, evidence_json, anomaly_ids)"
+        " VALUES (?, 'WARN', 'C', 't', '{}', ?)",
+        (utcnow_iso(), json.dumps([cur.lastrowid])),
+    )
+    conn.commit()
+    conn.close()
+    return alert.lastrowid
+
+
+def test_label_command_records_a_label(tmp_path, monkeypatch, capsys):
+    from vitals.cli import main
+
+    monkeypatch.setenv("VITALS_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("VITALS_PROJECTS_DIR", str(tmp_path / "projects"))
+    alert_id = _seed_alert(load())
+
+    assert main(["label", str(alert_id), "false-alarm"]) == 0
+    assert main(["label", "999", "real"]) == 1
+
+    conn = get_conn(load().db_path)
+    rows = conn.execute("SELECT alert_id, label, source FROM alert_labels").fetchall()
+    assert [tuple(r) for r in rows] == [(alert_id, "false_alarm", "cli")]
+
+
+def test_resolve_also_records_a_label(tmp_path, monkeypatch):
+    from vitals.cli import main
+
+    monkeypatch.setenv("VITALS_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("VITALS_PROJECTS_DIR", str(tmp_path / "projects"))
+    alert_id = _seed_alert(load())
+
+    assert main(["resolve", str(alert_id), "--as", "confirmed"]) == 0
+
+    conn = get_conn(load().db_path)
+    rows = conn.execute("SELECT label, source FROM alert_labels").fetchall()
+    assert [tuple(r) for r in rows] == [("real", "cli")]
+
+
+def test_status_reports_label_counts_and_the_false_alarm_rate(tmp_path, monkeypatch):
+    monkeypatch.setenv("VITALS_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("VITALS_PROJECTS_DIR", str(tmp_path / "projects"))
+    from vitals.alert.labels import record_label
+
+    cfg = load()
+    a1, a2 = _seed_alert(cfg), _seed_alert(cfg)
+    conn = get_conn(cfg.db_path)
+    record_label(conn, a1, "real", "toast")
+    record_label(conn, a2, "false_alarm", "toast")
+
+    out = render_status(conn)
+
+    assert "labels (30d)" in out
+    assert "WARN: 1 real / 1 false alarm / 0 unsure" in out
+    assert "false-alarm rate 50%" in out

@@ -155,7 +155,9 @@ def test_disabled_channel_is_never_constructed_or_called(tmp_path, monkeypatch):
     monkeypatch.setattr(
         channels_mod,
         "DesktopToast",
-        lambda: type("D", (), {"name": "desktop", "send": lambda self, p: notified.append(p)})(),
+        lambda **kwargs: type(
+            "D", (), {"name": "desktop", "send": lambda self, p: notified.append(p)}
+        )(),
     )
 
     dispatch(conn, cfg, _draft(), _attribution(), now_iso=START)
@@ -590,3 +592,32 @@ def test_non_info_dispatch_marks_no_info_slot(tmp_path, monkeypatch):
     ).fetchone()[0]
     assert rows == 0
     assert kv_get(conn, "alert_info_last:api_latency_p95") is None
+
+
+def test_dispatch_marks_detector_alerts_as_labelable(tmp_path, monkeypatch):
+    cfg = _cfg(tmp_path, monkeypatch)
+    conn = _conn(cfg)
+    fake = _FakeChannel("desktop")
+    monkeypatch.setattr(dispatcher_mod, "load_channels", lambda cfg: [fake])
+
+    alert_id = dispatch(conn, cfg, _draft(), _attribution(), now_iso=START)
+    collection = dispatch(
+        conn,
+        cfg,
+        _draft(anomaly_ids=[], dedup_key="no_data::collection"),
+        _attribution(),
+        now_iso=START,
+    )
+
+    first, second = fake.payloads
+    assert (first.alert_id, first.labelable) == (alert_id, True)
+    assert (second.alert_id, second.labelable) == (collection, False)
+
+
+def test_the_desktop_channel_is_wired_to_record_labels(tmp_path, monkeypatch):
+    cfg = _cfg(tmp_path, monkeypatch)
+    cfg.channels = {"desktop": {"enabled": True}}
+
+    (desktop,) = channels_mod.load_channels(cfg)
+
+    assert desktop._on_label is not None

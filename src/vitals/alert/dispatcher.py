@@ -171,6 +171,8 @@ def dispatch(
         title=draft.title,
         summary_text=_summary_text(draft, attribution),
         local_detail_path=local_detail_path,
+        alert_id=alert_id,
+        labelable=bool(draft.anomaly_ids),
     )
 
     for channel in load_channels(cfg):

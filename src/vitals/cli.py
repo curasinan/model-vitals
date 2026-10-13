@@ -184,6 +184,11 @@ def _cmd_resolve(args: argparse.Namespace) -> int:
             print(f"nothing to resolve: no alert or anomaly row with id {args.alert_id}")
             return 1
         normalized = args.as_.replace("-", "_").lower()
+        if conn.execute("SELECT 1 FROM alerts WHERE id = ?", (args.alert_id,)).fetchone():
+            from vitals.alert.labels import record_label
+
+            label = "real" if normalized == "confirmed" else "false_alarm"
+            record_label(conn, args.alert_id, label, "cli")
         if normalized == "false_positive":
             print(
                 f"resolved anomaly id(s) {resolved} as false-positive: folded back into"
@@ -198,6 +203,25 @@ def _cmd_resolve(args: argparse.Namespace) -> int:
             )
     finally:
         conn.close()
+    return 0
+
+
+def _cmd_label(args: argparse.Namespace) -> int:
+    from vitals.alert.labels import apply_label
+    from vitals.db import get_conn, init_db
+
+    cfg = _cfg(args)
+    conn = get_conn(cfg.db_path)
+    init_db(conn)
+    label = args.label.replace("-", "_")
+    try:
+        apply_label(conn, args.alert_id, label, "cli", cfg.detect)
+    except LookupError:
+        print(f"no alert with id {args.alert_id}")
+        return 1
+    finally:
+        conn.close()
+    print(f"alert {args.alert_id} labelled {args.label}")
     return 0
 
 
@@ -575,6 +599,14 @@ def build_parser() -> argparse.ArgumentParser:
         "counter. false-positive: fold the window back into healthy history.",
     )
     p_resolve.set_defaults(func=_cmd_resolve)
+
+    p_label = sub.add_parser(
+        "label",
+        help="label an alert as real, a false alarm, or not sure (same as the toast buttons)",
+    )
+    p_label.add_argument("alert_id", type=int, help="alerts.id")
+    p_label.add_argument("label", choices=["real", "false-alarm", "unsure"])
+    p_label.set_defaults(func=_cmd_label)
 
     p_alert_test = sub.add_parser(
         "alert-test",
