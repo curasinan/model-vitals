@@ -399,6 +399,21 @@ def _record_suite_change_if_needed(conn: sqlite3.Connection, current_hash: str) 
     kv_set(conn, "canary_suite_hash", current_hash)
 
 
+def _rollback_open_transaction(conn: sqlite3.Connection) -> None:
+    if conn.in_transaction:
+        conn.rollback()
+
+
+def _record_lost_run(
+    conn: sqlite3.Connection, task_id: str, stage: str, exc: BaseException
+) -> None:
+    _rollback_open_transaction(conn)
+    try:
+        log_ingest(conn, "canary_infra", 0, 1, f"{task_id}: {stage} lost to {exc}"[:300])
+    except sqlite3.OperationalError:
+        _rollback_open_transaction(conn)
+
+
 def run_cycle(
     conn: sqlite3.Connection,
     cfg: CanaryCfg,
@@ -441,7 +456,11 @@ def run_cycle(
         nonlocal aborted_reason
 
         est_usd = task.per_run_budget_usd or cfg.per_run_budget_usd
-        reservation_id = check_and_reserve(conn, cfg, est_usd)
+        try:
+            reservation_id = check_and_reserve(conn, cfg, est_usd)
+        except sqlite3.OperationalError as exc:
+            _record_lost_run(conn, task.task_id, "budget check", exc)
+            return True
         if reservation_id is None:
             aborted_reason = "budget"
             return False
@@ -457,10 +476,15 @@ def run_cycle(
                 inject_model=inject_model,
             )
         except sqlite3.OperationalError as exc:
-            settle(conn, reservation_id, 0, 0, est_usd)
-            log_ingest(conn, "canary_infra", 0, 1, f"{task.task_id}: run lost to {exc}"[:300])
+            _rollback_open_transaction(conn)
+            try:
+                settle(conn, reservation_id, 0, 0, est_usd)
+            except sqlite3.OperationalError:
+                pass
+            _record_lost_run(conn, task.task_id, "run", exc)
             return True
         except BaseException:
+            _rollback_open_transaction(conn)
             settle(conn, reservation_id, 0, 0, est_usd)
             raise
         settle_cost = row.cost_usd if row.cost_usd is not None else est_usd

@@ -10,6 +10,8 @@ __all__ = ["check_and_reserve", "settle"]
 
 def check_and_reserve(conn: sqlite3.Connection, cfg: CanaryCfg, est_usd: float) -> int | None:
     day = local_day()
+    if conn.in_transaction:
+        conn.rollback()
     conn.execute("BEGIN IMMEDIATE")
     try:
         cum_usd, cum_tokens = conn.execute(
@@ -42,6 +44,8 @@ def settle(
     tokens_out: int,
     cost_usd: float,
 ) -> None:
+    if conn.in_transaction:
+        conn.rollback()
     conn.execute("BEGIN IMMEDIATE")
     try:
         row = conn.execute(

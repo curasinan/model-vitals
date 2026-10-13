@@ -952,3 +952,87 @@ def test_a_crash_inside_run_task_still_finalises_the_cycle_and_settles_its_reser
 
     runs = conn.execute("SELECT task_id FROM canary_runs WHERE cycle_id=?", (cycle_id,)).fetchall()
     assert [r["task_id"] for r in runs] == ["task-a"]
+
+
+def _three_tasks(tmp_path, monkeypatch):
+    tasks = [
+        _make_exact_task(tmp_path, f"task-{c}", f"prompt {c}", "A", per_run_budget_usd=0.3)
+        for c in "abc"
+    ]
+    monkeypatch.setenv(
+        "VITALS_STUB_RESULT",
+        json.dumps({"is_error": False, "subtype": "success", "result": "A", "total_cost_usd": 0.1}),
+    )
+    return tasks
+
+
+def test_a_real_lock_on_a_run_insert_costs_one_run_not_the_cycle(tmp_path, monkeypatch):
+    import vitals.canary.runner as runner_module
+
+    conn = _conn(tmp_path)
+    conn.execute("PRAGMA busy_timeout=200")
+    other = get_conn(tmp_path / "vitals.db")
+    tasks = _three_tasks(tmp_path, monkeypatch)
+    stub = _write_stub(tmp_path)
+
+    real_insert = runner_module._insert_run
+    calls = {"n": 0}
+
+    def insert_under_lock(conn_, row):
+        calls["n"] += 1
+        if calls["n"] != 2:
+            return real_insert(conn_, row)
+        other.execute("BEGIN IMMEDIATE")
+        try:
+            return real_insert(conn_, row)
+        finally:
+            other.rollback()
+
+    monkeypatch.setattr(runner_module, "_insert_run", insert_under_lock)
+    cfg = _cfg(runs_per_task=1, long_context_daily=False, daily_budget_usd=10.0)
+
+    cycle_id = run_cycle(conn, cfg, tasks, claude_cmd=[sys.executable, str(stub)])
+
+    cycle = conn.execute("SELECT * FROM canary_cycles WHERE cycle_id=?", (cycle_id,)).fetchone()
+    assert cycle["finished_at"] is not None
+    assert cycle["aborted_reason"] is None
+    runs = conn.execute("SELECT task_id FROM canary_runs WHERE cycle_id=?", (cycle_id,)).fetchall()
+    assert [r["task_id"] for r in runs] == ["task-a", "task-c"]
+    costs = sorted(r[0] for r in conn.execute("SELECT cost_usd FROM spend_ledger"))
+    assert costs == pytest.approx([0.1, 0.1, 0.3])
+    infra = conn.execute("SELECT COUNT(*) FROM ingest_log WHERE kind = 'canary_infra'").fetchone()
+    assert infra[0] == 1
+
+
+def test_a_real_lock_on_the_budget_check_skips_one_run(tmp_path, monkeypatch):
+    import vitals.canary.runner as runner_module
+
+    conn = _conn(tmp_path)
+    conn.execute("PRAGMA busy_timeout=200")
+    other = get_conn(tmp_path / "vitals.db")
+    tasks = _three_tasks(tmp_path, monkeypatch)
+    stub = _write_stub(tmp_path)
+
+    real_reserve = runner_module.check_and_reserve
+    calls = {"n": 0}
+
+    def reserve_under_lock(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] != 2:
+            return real_reserve(*args, **kwargs)
+        other.execute("BEGIN IMMEDIATE")
+        try:
+            return real_reserve(*args, **kwargs)
+        finally:
+            other.rollback()
+
+    monkeypatch.setattr(runner_module, "check_and_reserve", reserve_under_lock)
+    cfg = _cfg(runs_per_task=1, long_context_daily=False, daily_budget_usd=10.0)
+
+    cycle_id = run_cycle(conn, cfg, tasks, claude_cmd=[sys.executable, str(stub)])
+
+    cycle = conn.execute("SELECT * FROM canary_cycles WHERE cycle_id=?", (cycle_id,)).fetchone()
+    assert cycle["aborted_reason"] is None
+    runs = conn.execute("SELECT task_id FROM canary_runs WHERE cycle_id=?", (cycle_id,)).fetchall()
+    assert [r["task_id"] for r in runs] == ["task-a", "task-c"]
+    assert conn.execute("SELECT COUNT(*) FROM spend_ledger").fetchone()[0] == 2
