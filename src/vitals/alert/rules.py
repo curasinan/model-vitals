@@ -104,6 +104,10 @@ def _occurrences(conn: sqlite3.Connection) -> list[_Occurrence]:
     return occurrences
 
 
+def _is_live(occ: _Occurrence, now: datetime, window_h: float) -> bool:
+    return occ.ended is None or (now - occ.ended).total_seconds() / 3600.0 <= window_h
+
+
 def _gap_hours(a: _Occurrence, b: _Occurrence, now: datetime) -> float:
     a_end = a.ended or now
     b_end = b.ended or now
@@ -215,7 +219,7 @@ def evaluate(
     consumed: set[int] = set()
 
     canary = [o for o in occurrences if o.family == "canary"]
-    if canary:
+    if any(_is_live(o, now, cfg.warn_window_h) for o in canary):
         drafts.append(
             _finish(
                 "CRITICAL",
@@ -228,6 +232,8 @@ def evaluate(
 
     eligible = [o for o in occurrences if o.family != "canary"]
     for cluster in _cluster(eligible, cfg.warn_window_h, now):
+        if not any(_is_live(o, now, cfg.warn_window_h) for o in cluster):
+            continue
         counted = {o.family for o in cluster if _counts_toward_threshold(o)}
         if len(counted) < 2:
             continue
@@ -245,6 +251,8 @@ def evaluate(
 
     for occ in occurrences:
         if set(occ.anomaly_ids) & consumed:
+            continue
+        if not _is_live(occ, now, cfg.warn_window_h):
             continue
         if _info_recently_sent(conn, occ.signal, now):
             continue

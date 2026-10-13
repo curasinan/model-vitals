@@ -110,12 +110,28 @@ def test_output_tokens_median(tmp_path, monkeypatch):
     assert row["value"] == 100.0 and row["n"] == 20
 
 
-def test_retry_rate_uses_observed_attempt_field(tmp_path, monkeypatch):
+def test_retry_rate_counts_an_error_raised_on_a_retry(tmp_path, monkeypatch):
     monkeypatch.setenv("VITALS_DATA_DIR", str(tmp_path))
     conn = _seeded_conn(tmp_path)
     aggregate_hours(conn, load().detect)
     row = _window(conn, sid.S3_RETRY_RATE)
-    assert row["value"] == 2.0 and row["n"] == 1
+    assert row["value"] == 1.0 and row["n"] == 1
+
+
+def test_retry_rate_is_a_proportion_of_errors(tmp_path, monkeypatch):
+    monkeypatch.setenv("VITALS_DATA_DIR", str(tmp_path))
+    conn = _seeded_conn(tmp_path)
+    for minute, attempt, exhausted in ((10, 0, 0), (11, 0, 0), (12, 7, 1)):
+        conn.execute(
+            "INSERT INTO api_errors(session_id, ts, model, status_code, attempt,"
+            " retries_exhausted, cc_version, source) VALUES ('s1', ?, ?, 529, ?, ?, ?, 'otel')",
+            (f"{HOUR}:{minute}:00+00:00", MODEL, attempt, exhausted, VER),
+        )
+    conn.commit()
+    aggregate_hours(conn, load().detect)
+    row = _window(conn, sid.S3_RETRY_RATE)
+    assert row["n"] == 4
+    assert row["value"] == 0.5
 
 
 def test_synthetic_client_errors_are_excluded_from_the_error_rate(tmp_path, monkeypatch):

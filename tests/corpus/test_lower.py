@@ -156,7 +156,7 @@ def test_lowering_matches_the_real_aggregator_for_one_hour(tmp_path):
         (start, MODEL, BUCKET, percentile([10.0, 20.0, 30.0], 0.5), 3, VERSION)
     ]
     assert windows(conn, sid.S2_ERROR_RATE) == [(start, MODEL, "all", 0.25, 4, VERSION)]
-    assert windows(conn, sid.S3_RETRY_RATE) == [(start, MODEL, "all", 2.0, 1, VERSION)]
+    assert windows(conn, sid.S3_RETRY_RATE) == [(start, MODEL, "all", 1.0, 1, VERSION)]
 
 
 def test_error_rows_and_success_rows_land_in_disjoint_store_tables(tmp_path):

@@ -6,7 +6,7 @@ import pytest
 from vitals.config import DetectCfg
 from vitals.db import get_conn, init_db
 from vitals.detect import signal_ids as sid
-from vitals.detect.baseline import ANY_VERSION, compute_for, robust
+from vitals.detect.baseline import ANY_VERSION, compute_for, pooled_rate, robust
 from vitals.timeutil import hour_add
 
 S1 = sid.S1_LATENCY_P95
@@ -249,3 +249,21 @@ def test_every_registered_rate_signal_is_treated_as_a_rate(tmp_path: Path, signa
     now = _seed(conn, signal, "2.1.230", START, 60, 0.0, n=50, bucket="all")
     base = compute_for(conn, CFG, signal, MODEL, "all", "2.1.230", now)
     assert base["is_rate"] is True and base["mu0"] > 0
+
+
+def test_pooled_rate_stays_inside_the_unit_interval():
+    for events, samples in ((12.0, 8), (8.0, 8), (0.0, 8)):
+        p0, sigma0 = pooled_rate(events, samples)
+        assert 0.0 < p0 < 1.0
+        assert sigma0 > 0.0
+
+
+def test_out_of_range_rate_windows_do_not_break_the_baseline(tmp_path: Path):
+    conn = _conn(tmp_path)
+    end = _seed(conn, sid.S3_RETRY_RATE, "2.1.237", START, 60, lambda i: 1.0 + (i % 3) * 0.5)
+
+    base = compute_for(conn, CFG, sid.S3_RETRY_RATE, MODEL, BUCKET, "2.1.237", end)
+
+    assert base is not None
+    assert 0.0 < base["mu0"] < 1.0
+    assert base["sigma0"] > 0.0

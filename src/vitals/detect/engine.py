@@ -140,6 +140,9 @@ def _standardize(cfg: DetectCfg, signal: str, state: dict, value: float, n: int)
         if n < RATE_MIN_N:
             return None
         p0 = mu0
+        if not 0.0 < p0 < 1.0:
+            return None
+        value = min(max(value, 0.0), 1.0)
         expected, observed = n * p0, n * value
         admissible = expected >= RATE_MIN_EVENTS or (
             expected < RATE_OBSERVED_ARM_MAX_EXPECTED and observed >= RATE_MIN_EVENTS
@@ -160,7 +163,7 @@ def _ensure_baseline(
 ) -> None:
     if state["frozen"]:
         return
-    if state["mu0"] is None:
+    if state["mu0"] is None or state["sigma0"] is None:
         base = compute_for(
             conn,
             cfg,
@@ -200,9 +203,9 @@ def _process_window(
 
     z = max(-cfg.h, min(cfg.h, raw_z))
     pos, neg, alarm = update(state["cusum_pos"], state["cusum_neg"], z, cfg.k, cfg.h)
-    state["cusum_pos"], state["cusum_neg"] = pos, neg
-    state["ewma"] = ewma_update(state["ewma"], float(row["value"]), cfg.lam)
     stat = max(pos, neg)
+    state["cusum_pos"], state["cusum_neg"] = min(pos, cfg.h), min(neg, cfg.h)
+    state["ewma"] = ewma_update(state["ewma"], float(row["value"]), cfg.lam)
 
     if alarm:
         direction = "up" if pos > cfg.h else "down"

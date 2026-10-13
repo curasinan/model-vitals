@@ -50,7 +50,8 @@ def robust(values: list[float]) -> tuple[float | None, float | None]:
 def pooled_rate(events: float, samples: int) -> tuple[float, float]:
     if samples <= 0:
         return 0.0, 0.0
-    p0 = max(events / samples, 0.5 / samples)
+    floor = 0.5 / samples
+    p0 = min(max(events / samples, floor), 1.0 - floor)
     return p0, math.sqrt(p0 * (1.0 - p0))
 
 

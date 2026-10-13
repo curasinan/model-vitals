@@ -241,8 +241,9 @@ def test_warn_window_boundary_gap_over_limit_stays_separate_info(tmp_path: Path)
     now = hour_add(START, 1 + cfg.warn_window_h + 2)
     drafts = evaluate(conn, cfg, now)
 
-    assert len(drafts) == 2
-    assert {d.severity for d in drafts} == {"INFO"}
+    assert len(drafts) == 1
+    assert drafts[0].severity == "INFO"
+    assert drafts[0].title.startswith(sid.S2_ERROR_RATE)
 
 
 def test_active_incident_suppresses_warn_but_keeps_full_evidence(tmp_path: Path):
@@ -504,3 +505,28 @@ def test_dedup_key_reflects_triples_not_anomaly_ids_for_a_solo_info_draft(tmp_pa
     assert draft.dedup_key == f"{sid.S1_LATENCY_P95}::{MODEL}::{BUCKET}"
     assert draft.first_seen == START
     assert draft.anomaly_ids == [aid]
+
+
+def test_an_episode_that_ended_long_ago_stops_drafting(tmp_path: Path):
+    conn = _conn(tmp_path)
+    _seed_anomaly(conn, sid.S1_LATENCY_P95, START, ended_at=hour_add(START, 14))
+    _seed_anomaly(conn, sid.S2_ERROR_RATE, hour_add(START, 1), ended_at=hour_add(START, 14))
+
+    assert evaluate(conn, DetectCfg(), hour_add(START, 14 + 72)) == []
+
+
+def test_a_recovered_canary_regression_stops_paging(tmp_path: Path):
+    conn = _conn(tmp_path)
+    _seed_anomaly(conn, sid.C1_CANARY_PASS, START, ended_at=hour_add(START, 24), bucket="all")
+
+    assert evaluate(conn, DetectCfg(), hour_add(START, 24 + 6 * 24)) == []
+
+
+def test_a_recently_ended_episode_still_correlates_with_a_live_one(tmp_path: Path):
+    conn = _conn(tmp_path)
+    _seed_anomaly(conn, sid.S1_LATENCY_P95, START, ended_at=hour_add(START, 3))
+    _seed_anomaly(conn, sid.S2_ERROR_RATE, hour_add(START, 2))
+
+    drafts = evaluate(conn, DetectCfg(), hour_add(START, 5))
+
+    assert [d.severity for d in drafts] == ["WARN"]

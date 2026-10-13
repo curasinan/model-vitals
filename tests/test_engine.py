@@ -357,7 +357,7 @@ def test_the_collapsed_stratum_alarms_in_its_own_right(tmp_path: Path):
 
     collapsed = _state(conn, version=ANY_VERSION)
     assert collapsed["in_alarm"] == 1 and collapsed["frozen"] == 1
-    assert collapsed["cusum_pos"] > CFG.h
+    assert collapsed["cusum_pos"] == CFG.h
     assert collapsed["last_window"] == hour_add(now, -1)
     anomaly = _anomaly(conn, ANY_VERSION)
     assert anomaly["direction"] == "up" and anomaly["status"] == "open"
@@ -523,7 +523,7 @@ def test_a_long_degradation_does_not_drift_the_collapsed_baseline_at_defaults(tm
     assert collapsed["status"] == "open"
 
     state = _state(conn, version=ANY_VERSION)
-    assert state["cusum_pos"] > 100
+    assert state["cusum_pos"] == REAL.h
     assert state["baseline_n"] == REAL.min_windows
     assert state["baseline_end"] < first_shift
     assert abs(state["mu0"] - 7.60) < 0.05
@@ -776,3 +776,40 @@ def test_cycles_landing_in_the_same_second_still_form_a_baseline(tmp_path):
         "the same nine cycles, distinguishable only by cycle_id, must still be "
         "detectable -- a clock that cannot separate them is not evidence of health"
     )
+
+
+def test_out_of_range_rate_windows_do_not_abort_the_tick(tmp_path: Path):
+    conn = _conn(tmp_path)
+    _seed(conn, sid.S3_RETRY_RATE, VER, START, 80, lambda i: 1.0 + (i % 3) * 0.5, n=8)
+    now = _healthy_then_shift(conn)
+
+    tick(conn, CFG, now)
+
+    assert _state(conn)["mu0"] is not None
+    assert _anomaly(conn, VER) is not None
+
+
+def test_an_episode_closes_soon_after_a_long_shift_recovers(tmp_path: Path):
+    conn = _conn(tmp_path)
+    now = _healthy_then_shift(conn, shifted=72, tail=24)
+
+    tick(conn, CFG, now)
+
+    anomaly = _anomaly(conn, VER)
+    assert anomaly is not None
+    assert anomaly["ended_at"] is not None
+    assert _state(conn)["in_alarm"] == 0
+
+
+def test_a_zero_dispersion_baseline_refits_once_the_signal_varies(tmp_path: Path):
+    conn = _conn(tmp_path)
+    s8 = sid.S8_OUTPUT_TOKENS
+    first = _seed(conn, s8, VER, START, 60, 0.0)
+    tick(conn, CFG, first)
+    assert _state(conn, signal=s8)["sigma0"] is None
+
+    rng = random.Random(7)
+    later = _seed(conn, s8, VER, first, 60, lambda i: 100.0 + rng.gauss(0, 10))
+    tick(conn, CFG, later)
+
+    assert _state(conn, signal=s8)["sigma0"] is not None

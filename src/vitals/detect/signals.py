@@ -102,17 +102,19 @@ def _api_signals(conn: sqlite3.Connection, start: str, end: str) -> dict[Key, tu
             out[(hour, sid.S8_OUTPUT_TOKENS, model, bucket, version)] = (median, len(values))
 
     error_counts: dict[tuple[str, str, str], int] = defaultdict(int)
-    attempts: dict[tuple[str, str, str], list[float]] = defaultdict(list)
+    retried: dict[tuple[str, str, str], list[int]] = defaultdict(list)
     for row in conn.execute(
-        "SELECT e.ts, e.model, e.attempt, COALESCE(e.cc_version, s.cc_version) AS ver "
+        "SELECT e.ts, e.model, e.attempt, e.retries_exhausted, "
+        "COALESCE(e.cc_version, s.cc_version) AS ver "
         "FROM api_errors e JOIN sessions s USING(session_id) "
         "WHERE s.is_canary = 0 AND e.source = 'otel' AND e.ts >= ? AND e.ts < ?",
         (start, end),
     ):
         key = (_hour(row["ts"]), row["model"] or UNKNOWN, row["ver"] or UNKNOWN)
         error_counts[key] += 1
-        if row["attempt"] is not None:
-            attempts[key].append(float(row["attempt"]))
+        if row["attempt"] is not None or row["retries_exhausted"]:
+            on_retry = bool(row["retries_exhausted"]) or (row["attempt"] or 0) >= 1
+            retried[key].append(1 if on_retry else 0)
 
     for key in set(request_counts) | set(error_counts):
         hour, model, version = key
@@ -120,11 +122,11 @@ def _api_signals(conn: sqlite3.Connection, start: str, end: str) -> dict[Key, tu
         total = request_counts.get(key, 0) + errors
         if total:
             out[(hour, sid.S2_ERROR_RATE, model, "all", version)] = (errors / total, total)
-    for key, values in attempts.items():
+    for key, flags in retried.items():
         hour, model, version = key
         out[(hour, sid.S3_RETRY_RATE, model, "all", version)] = (
-            sum(values) / len(values),
-            len(values),
+            sum(flags) / len(flags),
+            len(flags),
         )
     return out
 
