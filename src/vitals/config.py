@@ -44,6 +44,7 @@ class DetectCfg:
     critical_sustain_h: int = 12
     edit_loop_n: int = 3
     auto_resolve_days: int = 7
+    stale_after_days: int = 3
     canary_min_valid_fraction: float = 0.5
 
     no_data_window_minutes: int = 30

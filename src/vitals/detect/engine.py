@@ -485,6 +485,45 @@ def _auto_adjudicate(conn: sqlite3.Connection, cfg: DetectCfg, now_iso: str) -> 
     return [row["id"] for row in stale]
 
 
+def _close_stale(conn: sqlite3.Connection, cfg: DetectCfg, now_iso: str) -> list[int]:
+    cutoff = parse_iso(now_iso) - timedelta(days=cfg.stale_after_days)
+    rows = conn.execute(
+        "SELECT a.id, a.signal, a.model, a.context_bucket, d.cc_version, d.last_window,"
+        " d.open_anomaly_id FROM anomalies a JOIN detector_state d ON d.signal = a.signal"
+        "   AND d.model = a.model AND d.context_bucket = a.context_bucket"
+        "   AND d.cc_version = COALESCE(a.cc_version, ?)"
+        " WHERE a.status = 'open' AND a.ended_at IS NULL",
+        (ANY_VERSION,),
+    ).fetchall()
+    closed: list[int] = []
+    for row in rows:
+        if row["signal"] not in sid.PASSIVE_SIGNALS:
+            continue
+        tracked = row["open_anomaly_id"] == row["id"]
+        if tracked and not _before(row["last_window"], cutoff):
+            continue
+        ended_at = row["last_window"] or now_iso
+        if tracked:
+            state = _load_state(
+                conn, row["signal"], row["model"], row["context_bucket"], row["cc_version"]
+            )
+            _close_anomaly(conn, state, ended_at)
+            _save_state(conn, state)
+        else:
+            conn.execute("UPDATE anomalies SET ended_at = ? WHERE id = ?", (ended_at, row["id"]))
+        closed.append(row["id"])
+    if closed:
+        log_ingest(
+            conn,
+            "anomaly_stale_closed",
+            len(closed),
+            0,
+            f"no windows for {cfg.stale_after_days}d, or no longer tracked: "
+            + ",".join(str(i) for i in closed),
+        )
+    return closed
+
+
 def _before(iso: str | None, cutoff: datetime) -> bool:
     try:
         return parse_iso(iso).timestamp() < cutoff.timestamp() if iso else False
@@ -497,6 +536,8 @@ def tick(conn: sqlite3.Connection, cfg: DetectCfg, now_iso: str | None = None) -
     _auto_adjudicate(conn, cfg, now_iso)
     opened = _tick_passive(conn, cfg, now_iso)
     opened += _tick_canary(conn, cfg)
+    if _close_stale(conn, cfg, now_iso):
+        _auto_adjudicate(conn, cfg, now_iso)
     conn.commit()
     return opened
 
@@ -569,12 +610,22 @@ def _recompute_after_resolve(
         (signal, model, bucket, ANY_VERSION, version),
     ).fetchone()[0]
 
-    state["cusum_pos"] = 0.0
-    state["cusum_neg"] = 0.0
-    state["below_count"] = 0
-    state["in_alarm"] = 0
-    state["open_anomaly_id"] = None
-    state["ewma"] = None
+    tracked = state["open_anomaly_id"]
+    tracking_another = (
+        tracked is not None
+        and tracked != anomaly["id"]
+        and conn.execute(
+            "SELECT 1 FROM anomalies WHERE id = ? AND status = 'open'", (tracked,)
+        ).fetchone()
+        is not None
+    )
+    if not tracking_another:
+        state["cusum_pos"] = 0.0
+        state["cusum_neg"] = 0.0
+        state["below_count"] = 0
+        state["in_alarm"] = 0
+        state["open_anomaly_id"] = None
+        state["ewma"] = None
     state["frozen"] = 1 if still_open else 0
     _save_state(conn, state)
 

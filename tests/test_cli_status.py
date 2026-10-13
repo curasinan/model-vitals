@@ -488,3 +488,16 @@ def test_status_reports_label_counts_and_the_false_alarm_rate(tmp_path, monkeypa
     assert "labels (30d)" in out
     assert "WARN: 1 real / 1 false alarm / 0 unsure" in out
     assert "false-alarm rate 50%" in out
+
+
+def test_install_service_rebuilds_the_venv_without_asking(tmp_path, monkeypatch):
+    from vitals import cli
+
+    monkeypatch.setenv("VITALS_DATA_DIR", str(tmp_path))
+    calls = []
+    monkeypatch.setattr(cli, "_find_uv", lambda: "uv")
+    monkeypatch.setattr(cli.subprocess, "run", lambda cmd, **kwargs: calls.append(cmd))
+
+    assert cli.main(["install-service", "--dry-run"]) == 0
+
+    assert calls[0] == ["uv", "venv", "--clear", str(tmp_path / "venv")]

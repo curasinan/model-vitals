@@ -10,7 +10,7 @@ from vitals.config import DetectCfg
 from vitals.db import kv_get, kv_set
 from vitals.detect.baseline import AUTO_FALSE_POSITIVE
 from vitals.detect.signal_ids import FAMILY as FAMILIES
-from vitals.detect.signal_ids import WEAK_SIGNALS
+from vitals.detect.signal_ids import WEAK_SIGNALS, degrades
 from vitals.timeutil import parse_iso, utcnow_iso
 from vitals.watch.status_poller import active_incident
 
@@ -50,6 +50,7 @@ class _Occurrence:
     anomaly_ids: list[int]
     started: datetime
     ended: datetime | None
+    degrading: bool = True
 
 
 def signal_counts_toward_threshold(signal: str) -> bool:
@@ -60,7 +61,7 @@ def signal_counts_toward_threshold(signal: str) -> bool:
 
 
 def _counts_toward_threshold(occ: _Occurrence) -> bool:
-    return signal_counts_toward_threshold(occ.signal)
+    return occ.degrading and signal_counts_toward_threshold(occ.signal)
 
 
 def _dedup_key(occurrences: list[_Occurrence]) -> str:
@@ -74,7 +75,7 @@ def _first_seen(occurrences: list[_Occurrence]) -> str:
 
 def _occurrences(conn: sqlite3.Connection) -> list[_Occurrence]:
     rows = conn.execute(
-        "SELECT id, signal, model, context_bucket, started_at, ended_at"
+        "SELECT id, signal, model, context_bucket, started_at, ended_at, direction"
         " FROM anomalies WHERE status = 'open'"
     ).fetchall()
     groups: dict[tuple[str, str, str], list[sqlite3.Row]] = defaultdict(list)
@@ -99,6 +100,7 @@ def _occurrences(conn: sqlite3.Connection) -> list[_Occurrence]:
                 anomaly_ids=sorted(m["id"] for m in members),
                 started=started,
                 ended=ended,
+                degrading=any(degrades(signal, m["direction"]) for m in members),
             )
         )
     return occurrences

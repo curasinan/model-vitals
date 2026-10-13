@@ -530,3 +530,144 @@ def test_a_recently_ended_episode_still_correlates_with_a_live_one(tmp_path: Pat
     drafts = evaluate(conn, DetectCfg(), hour_add(START, 5))
 
     assert [d.severity for d in drafts] == ["WARN"]
+
+
+def test_a_latency_improvement_never_makes_a_multi_family_alert(tmp_path: Path):
+    conn = _conn(tmp_path)
+    _seed_anomaly(conn, sid.S1_LATENCY_P95, START, direction="down")
+    _seed_anomaly(conn, sid.S2_ERROR_RATE, hour_add(START, 1))
+
+    drafts = evaluate(conn, DetectCfg(), hour_add(START, 20))
+
+    assert sorted(d.severity for d in drafts) == ["INFO", "INFO"]
+
+
+def test_verbosity_degrades_in_either_direction(tmp_path: Path):
+    conn = _conn(tmp_path)
+    _seed_anomaly(conn, sid.S8_OUTPUT_TOKENS, START, direction="down")
+    _seed_anomaly(conn, sid.S2_ERROR_RATE, hour_add(START, 1))
+
+    drafts = evaluate(conn, DetectCfg(), hour_add(START, 2))
+
+    assert [d.severity for d in drafts] == ["WARN"]
+
+
+def test_one_harmful_stratum_is_enough_for_its_signal_to_count(tmp_path: Path):
+    conn = _conn(tmp_path)
+    _seed_anomaly(conn, sid.S1_LATENCY_P95, START, direction="down", version=ANY_VERSION)
+    _seed_anomaly(conn, sid.S1_LATENCY_P95, START, direction="up")
+    _seed_anomaly(conn, sid.S2_ERROR_RATE, hour_add(START, 1))
+
+    drafts = evaluate(conn, DetectCfg(), hour_add(START, 2))
+
+    assert [d.severity for d in drafts] == ["WARN"]
+
+
+def _seed_alarm(conn, signal, model, bucket, version, started_at, direction, last_window):
+    aid = _seed_anomaly(
+        conn, signal, started_at, model=model, bucket=bucket, version=version, direction=direction
+    )
+    conn.execute(
+        "INSERT INTO detector_state(signal, model, context_bucket, cc_version, mu0, sigma0,"
+        " cusum_pos, in_alarm, frozen, open_anomaly_id, last_window)"
+        " VALUES (?,?,?,?,1.0,0.1,5.0,1,1,?,?)",
+        (signal, model, bucket, version, aid, last_window),
+    )
+    conn.commit()
+    return aid
+
+
+def test_alarms_left_open_by_retired_models_stop_paging(tmp_path: Path):
+    conn = _conn(tmp_path)
+    cfg = DetectCfg()
+    now = "2026-10-13T21:00:00+00:00"
+    fresh = "2026-10-13T20:00:00+00:00"
+    retired = [
+        (
+            sid.S1_LATENCY_P95,
+            "claude-opus-5",
+            "gt180k",
+            ANY_VERSION,
+            "2026-09-20T14:00:00+00:00",
+            "down",
+            "2026-09-26T10:00:00+00:00",
+        ),
+        (
+            sid.S1B_LATENCY_P50,
+            "claude-opus-5",
+            "b100_180k",
+            ANY_VERSION,
+            "2026-09-19T15:00:00+00:00",
+            "down",
+            "2026-09-26T10:00:00+00:00",
+        ),
+        (
+            sid.S8_OUTPUT_TOKENS,
+            "claude-opus-5",
+            "gt180k",
+            ANY_VERSION,
+            "2026-09-19T15:00:00+00:00",
+            "down",
+            "2026-09-26T10:00:00+00:00",
+        ),
+        (
+            sid.S8_OUTPUT_TOKENS,
+            "claude-fable-5",
+            "gt180k",
+            ANY_VERSION,
+            "2026-09-28T21:00:00+00:00",
+            "down",
+            "2026-10-02T09:00:00+00:00",
+        ),
+        (
+            sid.S1B_LATENCY_P50,
+            "claude-sonnet-5",
+            "b30_100k",
+            ANY_VERSION,
+            "2026-10-04T09:00:00+00:00",
+            "up",
+            "2026-10-05T18:00:00+00:00",
+        ),
+        (
+            sid.S8_OUTPUT_TOKENS,
+            "claude-fable-5-1",
+            "gt180k",
+            "2.1.286",
+            "2026-10-03T13:00:00+00:00",
+            "up",
+            "2026-10-05T12:00:00+00:00",
+        ),
+    ]
+    live = [
+        (
+            sid.S8_OUTPUT_TOKENS,
+            "claude-fable-5-1",
+            "gt180k",
+            ANY_VERSION,
+            "2026-10-03T13:00:00+00:00",
+            "up",
+            fresh,
+        ),
+        (
+            sid.S8_OUTPUT_TOKENS,
+            "claude-fable-5-1",
+            "gt180k",
+            "2.1.293",
+            "2026-10-12T08:00:00+00:00",
+            "up",
+            fresh,
+        ),
+    ]
+    retired_ids = [_seed_alarm(conn, *row) for row in retired]
+    live_ids = [_seed_alarm(conn, *row) for row in live]
+    assert [d.severity for d in evaluate(conn, cfg, now)][:1] == ["CRITICAL"]
+
+    tick(conn, cfg, now)
+    drafts = evaluate(conn, cfg, now)
+
+    assert [(d.severity, d.anomaly_ids) for d in drafts] == [("INFO", sorted(live_ids))]
+    statuses = {
+        row["id"]: row["status"] for row in conn.execute("SELECT id, status FROM anomalies")
+    }
+    assert {statuses[i] for i in retired_ids} == {AUTO_FALSE_POSITIVE}
+    assert {statuses[i] for i in live_ids} == {"open"}

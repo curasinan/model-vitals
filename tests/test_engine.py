@@ -416,16 +416,96 @@ def test_a_stale_closed_episode_auto_resolves_and_unfreezes(tmp_path: Path):
     assert logged == 1
 
 
-def test_an_open_episode_is_never_auto_resolved(tmp_path: Path):
+def test_an_episode_still_in_alarm_is_never_auto_resolved(tmp_path: Path):
     conn = _conn(tmp_path)
     now = _healthy_then_shift(conn)
     tick(conn, CFG, now)
     assert _anomaly(conn, VER)["ended_at"] is None
 
-    tick(conn, CFG, hour_add(now, 24 * 30))
+    rng = random.Random(5)
+    later = _seed(conn, S1, VER, now, 24 * 30, lambda i: 8.80 + rng.gauss(0, 0.02))
+    tick(conn, CFG, later)
 
     assert _anomaly(conn, VER)["status"] == "open"
+    assert _anomaly(conn, VER)["ended_at"] is None
     assert _state(conn)["frozen"] == 1
+
+
+def test_an_episode_whose_stratum_went_quiet_closes_at_its_last_window(tmp_path: Path):
+    conn = _conn(tmp_path)
+    now = _healthy_then_shift(conn)
+    tick(conn, CFG, now)
+    last = _state(conn)["last_window"]
+
+    tick(conn, CFG, hour_add(now, 24 * CFG.stale_after_days - 1))
+    assert _anomaly(conn, VER)["ended_at"] is None
+
+    tick(conn, CFG, hour_add(now, 24 * CFG.stale_after_days + 1))
+
+    anomaly = _anomaly(conn, VER)
+    assert (anomaly["ended_at"], anomaly["status"]) == (last, "open")
+    state = _state(conn)
+    assert (state["in_alarm"], state["open_anomaly_id"], state["frozen"]) == (0, None, 1)
+    logged = conn.execute(
+        "SELECT COUNT(*) FROM ingest_log WHERE kind = 'anomaly_stale_closed'"
+    ).fetchone()[0]
+    assert logged == 1
+
+
+def test_a_long_dead_stratum_is_closed_and_folded_back_in_one_tick(tmp_path: Path):
+    conn = _conn(tmp_path)
+    now = _healthy_then_shift(conn)
+    tick(conn, CFG, now)
+
+    tick(conn, CFG, hour_add(now, 24 * (CFG.auto_resolve_days + 1)))
+
+    assert _anomaly(conn, VER)["status"] == "auto_false_positive"
+    assert _anomaly(conn, ANY_VERSION)["status"] == "auto_false_positive"
+    assert _state(conn)["frozen"] == 0
+
+
+def test_an_episode_the_detector_lost_track_of_is_closed_on_a_live_stratum(tmp_path: Path):
+    conn = _conn(tmp_path)
+    rng = random.Random(3)
+    now = _healthy_then_shift(conn)
+    tick(conn, CFG, now)
+    orphan = _anomaly(conn, VER)["id"]
+    conn.execute(
+        "UPDATE detector_state SET open_anomaly_id = NULL, in_alarm = 0 WHERE cc_version = ?",
+        (VER,),
+    )
+    later = _seed(conn, S1, VER, now, 6, lambda i: 8.80 + rng.gauss(0, 0.02))
+
+    tick(conn, CFG, later)
+
+    rows = conn.execute(
+        "SELECT id, ended_at FROM anomalies WHERE cc_version = ? ORDER BY id", (VER,)
+    ).fetchall()
+    assert rows[0]["id"] == orphan and rows[0]["ended_at"] == _state(conn)["last_window"]
+    assert len(rows) == 2 and rows[1]["ended_at"] is None
+    assert _state(conn)["open_anomaly_id"] == rows[1]["id"]
+
+
+def test_resolving_an_old_episode_keeps_tracking_the_one_that_reopened(tmp_path: Path):
+    conn = _conn(tmp_path)
+    rng = random.Random(7)
+    now = _healthy_then_shift(conn)
+    tick(conn, CFG, now)
+    resumed = hour_add(now, 24 * (CFG.stale_after_days + 1))
+    tick(conn, CFG, resumed)
+    mid = _seed(conn, S1, VER, resumed, 12, lambda i: 8.80 + rng.gauss(0, 0.02))
+    tick(conn, CFG, mid)
+
+    end = _seed(conn, S1, VER, mid, 24 * CFG.auto_resolve_days, lambda i: 8.80 + rng.gauss(0, 0.02))
+    tick(conn, CFG, end)
+
+    for version in (VER, ANY_VERSION):
+        rows = conn.execute(
+            "SELECT id, status FROM anomalies WHERE cc_version = ? ORDER BY id", (version,)
+        ).fetchall()
+        assert [r["status"] for r in rows] == ["auto_false_positive", "open"]
+        state = _state(conn, version=version)
+        assert (state["open_anomaly_id"], state["in_alarm"]) == (rows[1]["id"], 1)
 
 
 def test_auto_resolve_days_is_tunable(tmp_path: Path):

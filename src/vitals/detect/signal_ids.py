@@ -41,6 +41,30 @@ FAMILY: dict[str, str] = {
 
 WEAK_SIGNALS = frozenset({S7_SELF_CORR_RATE})
 
+HARMFUL_DIRECTION: dict[str, str] = {
+    S1_LATENCY_P95: "up",
+    S1B_LATENCY_P50: "up",
+    S2_ERROR_RATE: "up",
+    S3_RETRY_RATE: "up",
+    S4_TOOL_FAIL_EDIT: "up",
+    S4_TOOL_FAIL_WRITE: "up",
+    S4_TOOL_FAIL_BASH: "up",
+    S4_TOOL_FAIL_ALL: "up",
+    S5_EDIT_LOOP_RATE: "up",
+    S6_TEST_FAIL_AFTER_EDIT: "up",
+    S7_SELF_CORR_RATE: "up",
+    S9_POST_COMPACTION_FAIL: "up",
+    C1_CANARY_PASS: "down",
+    C2_CANARY_LONGCTX: "down",
+    C3_CANARY_LATENCY: "up",
+}
+
+
+def degrades(signal: str, direction: str | None) -> bool:
+    harmful = HARMFUL_DIRECTION.get(signal)
+    return harmful is None or direction is None or direction == harmful
+
+
 RATE_SIGNALS = frozenset(
     {
         S2_ERROR_RATE,

@@ -363,3 +363,29 @@ pip-installed copy is LF, so a plain diff reports every file as differing on a p
 deploy. See follow-ups 10.
 
 Observed 2026-08-28 while deploying the detector fixes.
+
+
+## 13. Alarms that could never end -- RESOLVED 2026-10-13
+
+A live install paged `CRITICAL: Multiple families degrading for over 12h` every hour. Ten open
+anomalies sat in one cluster, six of them on models that had stopped receiving traffic weeks
+earlier. Three causes, three fixes:
+
+1. A stratum that stops producing windows never re-enters `_pending_strata`, so CUSUM never sees
+   the windows it would need to close the episode, and `auto_resolve_days` only adjudicates
+   closed episodes. `tick` now closes an open passive episode at its stratum's last window once
+   that stratum has had no window for `DetectCfg.stale_after_days` (default 3), and runs
+   auto-adjudication again in the same tick, so a stratum dead for longer than
+   `auto_resolve_days` is folded back at once.
+2. `_recompute_after_resolve` reset the alarm tracking unconditionally, so resolving an old
+   episode orphaned a newer one still open on the same stratum; nothing could ever close it.
+   The reset is now skipped while the stratum tracks another open episode, and step 1 also
+   closes any open passive episode its stratum no longer tracks.
+3. The multi-family rule ignored direction, so faster latency counted as a degrading family.
+   `signal_ids.HARMFUL_DIRECTION` names the harmful direction per signal; an occurrence counts
+   toward WARN/CRITICAL only if one of its anomalies moved that way. Verbosity has no entry and
+   counts both ways. Improvements still get their INFO.
+
+Residual: a stale-closed episode younger than `auto_resolve_days` still correlates with a live
+one in another family and can hold a WARN (never a CRITICAL, which needs both families open)
+until it is labelled or auto-resolved.

@@ -477,7 +477,7 @@ def _cmd_install_service(args: argparse.Namespace) -> int:
     print(f"creating venv at {venv}")
     uv = _find_uv()
     if uv:
-        subprocess.run([uv, "venv", str(venv)], check=True)
+        subprocess.run([uv, "venv", "--clear", str(venv)], check=True)
         subprocess.run([uv, "pip", "install", "--python", str(venv_python), str(repo)], check=True)
     else:
         print("uv not found; falling back to stdlib venv + pip")

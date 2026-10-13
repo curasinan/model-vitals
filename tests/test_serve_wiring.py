@@ -17,7 +17,7 @@ from vitals.daemon import (
 )
 from vitals.db import get_conn, init_db, kv_get, kv_set
 from vitals.detect import signal_ids as sid
-from vitals.timeutil import hour_add, local_day, parse_iso, utcnow_iso
+from vitals.timeutil import hour_add, hour_floor, local_day, parse_iso, utcnow_iso
 
 MODEL = "claude-sonnet-5"
 BUCKET = "gt180k"
@@ -86,10 +86,10 @@ def _seed_signal_windows(
     return ts
 
 
-def _healthy_then_shift(conn, healthy=192, shifted=12):
+def _healthy_then_shift(conn, healthy=192, shifted=12, start=START):
     rng = random.Random(11)
     ts = _seed_signal_windows(
-        conn, sid.S1_LATENCY_P95, VER, START, healthy, lambda i: 7.60 + rng.gauss(0, 0.02)
+        conn, sid.S1_LATENCY_P95, VER, start, healthy, lambda i: 7.60 + rng.gauss(0, 0.02)
     )
     ts = _seed_signal_windows(
         conn, sid.S1_LATENCY_P95, VER, ts, shifted, lambda i: 8.80 + rng.gauss(0, 0.02)
@@ -134,7 +134,7 @@ def test_job_detect_does_not_defeat_the_dispatcher_dedup_on_a_persisting_conditi
 def test_job_aggregate_chains_into_job_detect_on_the_same_call(tmp_path, monkeypatch):
     cfg = _cfg(tmp_path, monkeypatch)
     conn = _conn(cfg)
-    _healthy_then_shift(conn)
+    _healthy_then_shift(conn, start=hour_add(hour_floor(utcnow_iso()), -(192 + 12)))
 
     job_aggregate(conn, cfg)
 
